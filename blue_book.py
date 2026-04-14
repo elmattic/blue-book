@@ -176,7 +176,7 @@ def main():
     if releases:
         if len(releases) > 1:
             print(
-                f"Warning: Found {len(releases)} matching releases. We will use the last one.\n"
+                f"Warning: Found {len(releases)} matching releases, using the last one.\n"
             )
         print_release_table(releases)
         print_tracks(releases)
