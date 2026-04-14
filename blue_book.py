@@ -92,6 +92,32 @@ def get_releases_by_toc(toc_string) -> list | None:
         return None
 
 
+def get_releases_by_discid(disc_id: str) -> list | None:
+    print(f"Querying MusicBrainz by Disc ID: {disc_id}")
+
+    try:
+        result = musicbrainzngs.get_releases_by_discid(
+            id=disc_id, toc=None, includes=["artists", "artist-credits", "recordings"]
+        )
+
+        # Note: When searching by ID, MB usually returns 'disc' -> 'release-list'
+        if result and "disc" in result:
+            return result["disc"].get("release-list", [])
+
+        # Some versions of the API/Library return 'release-list' at the top level
+        if "release-list" in result:
+            return result["release-list"]
+
+        return []
+
+    except musicbrainzngs.ResponseError as e:
+        print(f"Disc ID not found or error: {e}")
+        return []
+    except Exception as e:
+        print(f"Lookup failed: {e}")
+        return None
+
+
 def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
     if not releases:
         return None
@@ -349,6 +375,8 @@ def main():
         sys.exit(1)
 
     releases = get_releases_by_toc(cdtoc)
+    if releases is None:
+        releases = get_releases_by_discid("oCqvhtImT5b3CmJTwFTFml5cZtE-")
 
     if args.verbose:
         pprint.pprint(releases, indent=2, width=40)
