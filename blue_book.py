@@ -32,12 +32,11 @@ def extract_cdtoc() -> str | None:
             ["riprip", "--no-rip"], capture_output=True, text=True, check=True
         )
 
-        pattern = r"([0-9A-F+]+)"
+        pattern = r"([0-9A-F]+(?:\+[0-9A-F]+)+)"
         match = re.search(pattern, result.stderr, re.IGNORECASE)
 
         if match:
             cdtoc = match.group(1)
-            print(f"Found CDTOC: {cdtoc}")
             return cdtoc
 
         print("Could not find CDTOC in riprip output.")
