@@ -10,13 +10,19 @@ import argparse
 import os
 import pprint
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 import musicbrainzngs
 from mutagen.flac import FLAC
 
 __version__ = "0.1.0"
+
+# Define the default: ~/.blue-book"
+DEFAULT_OUTPUT = Path.home() / ".blue-book"
 
 # Identify our tool to MusicBrainz
 musicbrainzngs.set_useragent(
@@ -165,6 +171,119 @@ def print_tracks(releases: list) -> None:
             print(track_line)
 
 
+def get_metadata(release: dict) -> dict:
+    """
+    Extracts high-level metadata and a list of tracks for tagging.
+    """
+    artist_name = release.get("artist-credit-phrase")
+    album_title = release.get("title")
+    release_date = release.get("date")
+    year = release_date[:4] if release_date else None
+
+    tracks = {}
+
+    # Iterate through mediums (CD1, CD2, etc.)
+    for medium in release.get("medium-list"):
+        for track in medium.get("track-list"):
+            # Fallback for track titles
+            title = track.get("title") or track.get("recording", {}).get("title")
+
+            track_artist = track.get("artist-credit-phrase")
+
+            track_info = {
+                "title": title,
+                "artist": track_artist,
+                "album": album_title,
+                "date": year,
+                "tracknumber": track.get("number"),
+                # Genre?
+                "albumartist": artist_name,
+                # Additions
+                "tracktotal": len(medium.get("track-list")),
+                "discnumber": medium.get("position"),
+                "disctotal": len(release.get("medium-list")),
+            }
+            tracks[track.get("number")] = track_info
+
+    return {
+        "album_title": album_title,
+        "artist": artist_name,
+        "tracks": tracks,
+    }
+
+
+def process_track(wav_path: str, flac_path: str, track_info: dict) -> None:
+    """Converts a single WAV to FLAC and applies tags."""
+    subprocess.run(
+        ["ffmpeg", "-i", wav_path, "-compression_level", "8", flac_path, "-y"],
+        capture_output=True,
+        check=True,
+    )
+
+    # Tagging
+    audio = FLAC(flac_path)
+    audio["title"] = track_info["title"]
+    audio["artist"] = track_info["artist"]
+    audio["album"] = track_info["album"]
+    audio["date"] = track_info["date"]
+    audio["tracknumber"] = str(track_info["tracknumber"])
+    audio["tracktotal"] = str(track_info["tracktotal"])
+    audio.save()
+
+
+def rip_and_encode(release: dict, passes: int = 10) -> None:
+    meta = get_metadata(release)
+
+    print(f"Starting riprip with {passes} passes...")
+    try:
+        subprocess.run(["riprip", "--passes", str(passes)], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error ripping disc: {e}")
+        return
+
+    output_path = DEFAULT_OUTPUT.joinpath(
+        f"{meta.get('artist')} - {meta.get('album_title')}"
+    )
+    print(output_path)
+
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    riprip_dir = Path("_riprip")
+
+    wav_files = sorted(list(riprip_dir.glob("*.wav")))
+
+    if not wav_files:
+        print("No WAV files found in _riprip.")
+        return
+
+    print(f"Encoding {len(wav_files)} tracks to FLAC...")
+
+    for i, wav_path in enumerate(wav_files):
+        flac_path = output_path / f"{wav_path.stem}.flac"
+
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-i",
+                    str(wav_path),
+                    "-compression_level",
+                    "8",
+                    str(flac_path),
+                    "-y",
+                ],
+                capture_output=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            print(f"FFmpeg failed on {wav_path.name}")
+            continue
+
+        wav_path.unlink()
+
+    print(f"\nSuccess! Files located in: {output_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Bit-perfect audio extraction and archival for CDs.",
@@ -208,6 +327,8 @@ def main():
         print_release_table(releases)
         print_tracks(releases)
         print("")
+
+        rip_and_encode(releases[-1], DEFAULT_OUTPUT)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
