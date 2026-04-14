@@ -307,7 +307,7 @@ def main():
     parser.add_argument(
         "-s",
         "--skip",
-        type=str,
+        action="store_true",
         help="skip the ripping process",
     )
     args = parser.parse_args()
