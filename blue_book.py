@@ -130,8 +130,8 @@ def print_tracks(releases) -> None:
             length_ms = track.get("length") or track["recording"].get("length")
             duration = ""
             if length_ms:
-                seconds = int(length_ms) // 1000
-                duration = f"{seconds // 60}:{seconds % 60:02d}"
+                minutes, seconds = divmod(int(length_ms) // 1000, 60)
+                duration = f"{minutes}:{seconds:02d}"
 
             # 3. Guest Artists
             track_artist = track.get("artist-credit-phrase")
