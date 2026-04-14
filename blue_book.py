@@ -212,10 +212,18 @@ def get_metadata(release: dict) -> dict:
     }
 
 
-def process_track(wav_path: str, flac_path: str, track_info: dict) -> None:
+def create_track(wav_path: Path, flac_path: Path, track_info: dict) -> None:
     """Converts a single WAV to FLAC and applies tags."""
     subprocess.run(
-        ["ffmpeg", "-i", wav_path, "-compression_level", "8", flac_path, "-y"],
+        [
+            "ffmpeg",
+            "-i",
+            str(wav_path),
+            "-compression_level",
+            "8",
+            str(flac_path),
+            "-y",
+        ],
         capture_output=True,
         check=True,
     )
@@ -264,21 +272,9 @@ def rip_and_encode(release: dict, passes: int = 10) -> None:
         flac_path = output_path / f"{wav_path.stem}.flac"
 
         try:
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-i",
-                    str(wav_path),
-                    "-compression_level",
-                    "8",
-                    str(flac_path),
-                    "-y",
-                ],
-                capture_output=True,
-                check=True,
-            )
-        except subprocess.CalledProcessError:
-            print(f"FFmpeg failed on {wav_path.name}")
+            create_track(wav_path, flac_path, meta.get("tracks")[i])
+        except subprocess.CalledProcessError as e:
+            print(f"Error converting {wav_path.name}: {e}")
             continue
 
         # wav_path.unlink()
