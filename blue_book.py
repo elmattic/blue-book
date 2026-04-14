@@ -42,6 +42,10 @@ def extract_cdtoc() -> str | None:
         print("Could not find CDTOC in riprip output.")
         return None
 
+    except FileNotFoundError:
+        print("Error: 'riprip' utility not found. Please install it.")
+        return None
+
     except subprocess.CalledProcessError as e:
         print(f"Error scanning disc: {e}")
         return None
@@ -170,6 +174,10 @@ def main():
         pprint.pprint(releases, indent=2, width=40)
 
     if releases:
+        if len(releases) > 1:
+            print(
+                f"Warning: Found {len(releases)} matching releases. We will use the last one.\n"
+            )
         print_release_table(releases)
         print_tracks(releases)
         print("")
