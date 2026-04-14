@@ -10,10 +10,8 @@ import argparse
 import os
 import pprint
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import musicbrainzngs
@@ -203,7 +201,7 @@ def get_metadata(release: dict) -> dict:
                 "discnumber": medium.get("position"),
                 "disctotal": len(release.get("medium-list")),
             }
-            tracks[track.get("number")] = track_info
+            tracks[int(track.get("number"))] = track_info
 
     return {
         "album_title": album_title,
@@ -239,20 +237,21 @@ def create_track(wav_path: Path, flac_path: Path, track_info: dict) -> None:
     audio.save()
 
 
-def rip_and_encode(release: dict, passes: int = 10) -> None:
+def rip_and_encode(release: dict, passes: int, skip: bool) -> None:
     meta = get_metadata(release)
 
-    print(f"Starting riprip with {passes} passes...")
-    try:
-        subprocess.run(
-            ["riprip", "--passes", str(passes)], input="y\n", text=True, check=True
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"Error ripping disc: {e}")
-        return
+    if not skip:
+        print(f"Starting riprip with {passes} passes...")
+        try:
+            subprocess.run(
+                ["riprip", "--passes", str(passes)], input="y\n", text=True, check=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"Error ripping disc: {e}")
+            return
 
-    output_path = DEFAULT_OUTPUT.joinpath(
-        f"{meta.get('artist')} - {meta.get('album_title')}"
+    output_path = Path.joinpath(
+        DEFAULT_OUTPUT, meta.get("artist"), meta.get("album_title")
     )
     print(output_path)
 
@@ -272,7 +271,7 @@ def rip_and_encode(release: dict, passes: int = 10) -> None:
         flac_path = output_path / f"{wav_path.stem}.flac"
 
         try:
-            create_track(wav_path, flac_path, meta.get("tracks")[i])
+            create_track(wav_path, flac_path, meta.get("tracks")[i + 1])
         except subprocess.CalledProcessError as e:
             print(f"Error converting {wav_path.name}: {e}")
             continue
@@ -297,13 +296,19 @@ def main():
         "-b",
         "--barcode",
         type=str,
-        help="Filter release by barcode (e.g., 689230001720)",
+        help="filter release by barcode (e.g., 689230001720)",
     )
     parser.add_argument(
         "-c",
         "--country",
         type=str,
-        help="Filter release by country code (e.g., US, GB)",
+        help="filter release by country code (e.g., US, GB)",
+    )
+    parser.add_argument(
+        "-s",
+        "--skip",
+        type=str,
+        help="skip the ripping process",
     )
     args = parser.parse_args()
 
@@ -326,7 +331,7 @@ def main():
         print_tracks(releases)
         print("")
 
-        rip_and_encode(releases[-1], 5)
+        rip_and_encode(releases[-1], 5, args.skip)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
