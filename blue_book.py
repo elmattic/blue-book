@@ -84,7 +84,21 @@ def get_releases_by_toc(toc_string) -> list | None:
         return None
 
 
-def print_release_table(releases) -> None:
+def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
+    if not releases:
+        return None
+
+    filtered = [
+        r
+        for r in releases
+        if (not args.barcode or r.get("barcode") == args.barcode)
+        and (not args.country or r.get("country", "").upper() == args.country.upper())
+    ]
+
+    return filtered if filtered else releases
+
+
+def print_release_table(releases: list) -> None:
     release = releases[-1]
 
     # Get Artist (checking the phrase first, then the list)
@@ -114,7 +128,7 @@ def print_release_table(releases) -> None:
         print(f"{label:<20} | {value}")
 
 
-def print_tracks(releases) -> None:
+def print_tracks(releases: list) -> None:
     release = releases[-1]
 
     # The 'artist-credit-phrase' at the release level for comparison
@@ -162,6 +176,18 @@ def main():
         "-v", "--verbose", action="store_true", help="show raw data for debugging"
     )
     parser.add_argument("--toc", type=str, help="manually provide a TOC string")
+    parser.add_argument(
+        "-b",
+        "--barcode",
+        type=str,
+        help="Filter release by barcode (e.g., 689230001720)",
+    )
+    parser.add_argument(
+        "-c",
+        "--country",
+        type=str,
+        help="Filter release by country code (e.g., US, GB)",
+    )
     args = parser.parse_args()
 
     cdtoc = args.toc or extract_cdtoc()
@@ -174,6 +200,7 @@ def main():
         pprint.pprint(releases, indent=2, width=40)
 
     if releases:
+        releases = find_best_release(releases, args)
         if len(releases) > 1:
             print(
                 f"Warning: Found {len(releases)} matching releases, using the last one.\n"
