@@ -264,7 +264,7 @@ def get_album_path(root: Path, meta: dict, template: str) -> Path:
 def get_track_path(album_dir: Path, info: dict, template: str) -> Path:
     """Uses the existing track 'info' dict to create the filename."""
     context = {
-        "tracknum": info.get("tracknumber"),
+        "tracknum": int(info.get("tracknumber")),
         "title": sanitize(info.get("title")),
         "artist": sanitize(info.get("artist")),
     }
