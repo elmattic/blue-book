@@ -236,7 +236,9 @@ def rip_and_encode(release: dict, passes: int = 10) -> None:
 
     print(f"Starting riprip with {passes} passes...")
     try:
-        subprocess.run(["riprip", "--passes", str(passes)], check=True)
+        subprocess.run(
+            ["riprip", "--passes", str(passes)], input="y\n", text=True, check=True
+        )
     except subprocess.CalledProcessError as e:
         print(f"Error ripping disc: {e}")
         return
@@ -279,7 +281,7 @@ def rip_and_encode(release: dict, passes: int = 10) -> None:
             print(f"FFmpeg failed on {wav_path.name}")
             continue
 
-        wav_path.unlink()
+        # wav_path.unlink()
 
     print(f"\nSuccess! Files located in: {output_path}")
 
@@ -328,7 +330,7 @@ def main():
         print_tracks(releases)
         print("")
 
-        rip_and_encode(releases[-1], DEFAULT_OUTPUT)
+        rip_and_encode(releases[-1], 5)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
