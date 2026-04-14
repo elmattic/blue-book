@@ -32,7 +32,8 @@ def extract_cdtoc() -> str | None:
             ["riprip", "--no-rip"], capture_output=True, text=True, check=True
         )
 
-        match = re.search(r"CDTOC:\s+([\w\d\-_]+)", result.stdout)
+        pattern = r"([0-9A-F+]+)"
+        match = re.search(pattern, result.stderr, re.IGNORECASE)
 
         if match:
             cdtoc = match.group(1)
