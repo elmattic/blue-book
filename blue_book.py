@@ -22,6 +22,10 @@ __version__ = "0.1.0"
 # Define the default: ~/.blue-book"
 DEFAULT_OUTPUT = Path.home() / ".blue-book"
 
+# A two-level hierarchy: Artist/Album/01 - Title.flac
+DIR_TEMPLATE = "{artist}/{album}"
+FILE_TEMPLATE = "{tracknum:02d} - {title}.flac"
+
 # Identify our tool to MusicBrainz
 musicbrainzngs.set_useragent(
     os.path.basename(__file__), __version__, "https://github.com/elmattic/blue-book"
@@ -237,6 +241,36 @@ def create_track(wav_path: Path, flac_path: Path, track_info: dict) -> None:
     audio.save()
 
 
+def sanitize(text: str) -> str:
+    """Removes or replaces characters that are illegal in file systems."""
+    if not text:
+        return "Unknown"
+    # Replace slashes with hyphens; remove other illegal characters
+    clean = re.sub(r"[\\/]", "-", str(text))
+    clean = re.sub(r'[<>:"|?*]', "", clean)
+    return clean.strip()
+
+
+def get_album_path(root: Path, meta: dict, template: str) -> Path:
+    """Uses the main album metadata to create the directory."""
+    context = {
+        "artist": sanitize(meta.get("artist")),
+        "album": sanitize(meta.get("album_title")),
+        "date": sanitize(meta.get("date")),
+    }
+    return root.joinpath(template.format(**context))
+
+
+def get_track_path(album_dir: Path, info: dict, template: str) -> Path:
+    """Uses the existing track 'info' dict to create the filename."""
+    context = {
+        "tracknum": info.get("tracknumber"),
+        "title": sanitize(info.get("title")),
+        "artist": sanitize(info.get("artist")),
+    }
+    return album_dir.joinpath(template.format(**context))
+
+
 def rip_and_encode(release: dict, passes: int, skip: bool) -> None:
     meta = get_metadata(release)
 
@@ -250,12 +284,8 @@ def rip_and_encode(release: dict, passes: int, skip: bool) -> None:
             print(f"Error ripping disc: {e}")
             return
 
-    output_path = Path.joinpath(
-        DEFAULT_OUTPUT, meta.get("artist"), meta.get("album_title")
-    )
-    print(output_path)
-
-    output_path.mkdir(parents=True, exist_ok=True)
+    album_path = get_album_path(DEFAULT_OUTPUT, meta, DIR_TEMPLATE)
+    album_path.mkdir(parents=True, exist_ok=True)
 
     riprip_dir = Path("_riprip")
 
@@ -268,17 +298,19 @@ def rip_and_encode(release: dict, passes: int, skip: bool) -> None:
     print(f"Encoding {len(wav_files)} tracks to FLAC...")
 
     for i, wav_path in enumerate(wav_files):
-        flac_path = output_path / f"{wav_path.stem}.flac"
+        info = meta.get("tracks")[i + 1]
+
+        track_path = get_track_path(album_path, info, FILE_TEMPLATE)
 
         try:
-            create_track(wav_path, flac_path, meta.get("tracks")[i + 1])
+            create_track(wav_path, track_path, info)
         except subprocess.CalledProcessError as e:
             print(f"Error converting {wav_path.name}: {e}")
             continue
 
         # wav_path.unlink()
 
-    print(f"\nSuccess! Files located in: {output_path}")
+    print(f"\nSuccess! Files located in: {album_path}")
 
 
 def main():
