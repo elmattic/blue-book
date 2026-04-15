@@ -129,11 +129,13 @@ def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
     if not releases:
         return None
 
+    barcode = args.barcode.replace(" ", "")
+
     filtered = [
         r
         for r in releases
-        if (not args.barcode or r.get("barcode") == args.barcode)
-        and (not args.country or r.get("country", "").upper() == args.country.upper())
+        if (not args.barcode or barcode in r.get("barcode"))
+        and (not args.country or r.get("country").upper() == args.country.upper())
     ]
 
     return filtered if filtered else releases
