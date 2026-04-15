@@ -131,14 +131,16 @@ def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
     if not releases:
         return None
 
+    country = args.country.upper() if args.country else None
+
     filtered = [
         r
         for r in releases
-        if (args.barcode == r.get("barcode"))
-        and (not args.country or r.get("country", "").upper() == args.country.upper())
+        if (args.barcode is None or r.get("barcode") == args.barcode)
+        and (country is None or r.get("country") == country)
     ]
 
-    return filtered if filtered else releases
+    return filtered
 
 
 def print_release_table(releases: list) -> None:
@@ -275,15 +277,16 @@ def create_track(wav_path: Path, flac_path: Path, track_info: dict) -> None:
         check=True,
     )
 
-    # Tagging
-    audio = FLAC(flac_path)
-    audio["title"] = track_info["title"]
-    audio["artist"] = track_info["artist"]
-    audio["album"] = track_info["album"]
-    audio["date"] = track_info["date"]
-    audio["tracknumber"] = str(track_info["tracknumber"])
-    audio["tracktotal"] = str(track_info["tracktotal"])
-    audio.save()
+    if flac_path.exists():
+        # Tagging
+        audio = FLAC(flac_path)
+        audio["title"] = track_info["title"]
+        audio["artist"] = track_info["artist"]
+        audio["album"] = track_info["album"]
+        audio["date"] = track_info["date"]
+        audio["tracknumber"] = str(track_info["tracknumber"])
+        audio["tracktotal"] = str(track_info["tracktotal"])
+        audio.save()
 
 
 def sanitize(text: str) -> str:
