@@ -131,12 +131,10 @@ def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
     if not releases:
         return None
 
-    barcode = args.barcode.replace(" ", "") if args.barcode is not None else None
-
     filtered = [
         r
         for r in releases
-        if (not barcode or barcode in r.get("barcode", ""))
+        if (args.barcode == r.get("barcode"))
         and (not args.country or r.get("country", "").upper() == args.country.upper())
     ]
 
@@ -154,6 +152,8 @@ def print_release_table(releases: list) -> None:
             [c["artist"]["name"] for c in release["artist-credit"] if "artist" in c]
         )
 
+    label_info = release.get("label-info-list", [{}])[0]
+
     # We'll create a list of fields we want to display
     fields = [
         ("Release ID", release.get("id")),
@@ -167,11 +167,11 @@ def print_release_table(releases: list) -> None:
         ("Format", release.get("packaging", "N/A")),
         (
             "Label",
-            release.get("label-info-list", [{}])[0].get("label", {}).get("name", "N/A"),
+            label_info.get("label", {}).get("name", "N/A"),
         ),
         (
-            "Catalog #",
-            release.get("label-info-list", [{}])[0].get("catalog-number", "N/A"),
+            "Catalog#",
+            label_info.get("catalog-number", "N/A"),
         ),
     ]
 
