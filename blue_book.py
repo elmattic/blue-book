@@ -64,13 +64,15 @@ def get_releases_by_toc(toc_string) -> list | None:
     parts = [int(x, 16) for x in toc_string.split("+")]
 
     # Step 2: Extract the key components
-    last_track = parts[0]
-    lead_out = parts[-1]
-    track_offsets = parts[1:-1]
+    num_tracks = parts[0]
+    # The Lead-out for the audio session is the offset immediately
+    # following the last audio track.
+    audio_lead_out = parts[num_tracks + 1]
+    track_offsets = parts[1 : num_tracks + 1]
 
     # Step 3: Format the TOC query
-    # Format: "FirstTrack LastTrack LeadOut Offset1 Offset2..."
-    toc_query = f"1 {last_track} {lead_out} " + " ".join(map(str, track_offsets))
+    # Format: "FirstTrack LastTrack AudioLeadOut Offset1 Offset2..."
+    toc_query = f"1 {num_tracks} {audio_lead_out} " + " ".join(map(str, track_offsets))
     print(toc_query)
     print("")
 
