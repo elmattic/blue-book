@@ -84,7 +84,9 @@ def get_releases_by_toc(toc_string: str, lengths: list[int]) -> list | None:
     try:
         # Step 4: Search by TOC
         result = musicbrainzngs.get_releases_by_discid(
-            id=None, toc=toc_query, includes=["artists", "artist-credits", "recordings"]
+            id=None,
+            toc=toc_query,
+            includes=["artists", "artist-credits", "recordings", "labels"],
         )
 
         # Step 5: Extract the release list
@@ -99,30 +101,30 @@ def get_releases_by_toc(toc_string: str, lengths: list[int]) -> list | None:
         return None
 
 
-def get_releases_by_discid(disc_id: str) -> list | None:
-    print(f"Querying MusicBrainz by Disc ID: {disc_id}")
+# def get_releases_by_discid(disc_id: str) -> list | None:
+#     print(f"Querying MusicBrainz by Disc ID: {disc_id}")
 
-    try:
-        result = musicbrainzngs.get_releases_by_discid(
-            id=disc_id, toc=None, includes=["artists", "artist-credits", "recordings"]
-        )
+#     try:
+#         result = musicbrainzngs.get_releases_by_discid(
+#             id=disc_id, toc=None, includes=["artists", "artist-credits", "recordings"]
+#         )
 
-        # Note: When searching by ID, MB usually returns 'disc' -> 'release-list'
-        if result and "disc" in result:
-            return result["disc"].get("release-list", [])
+#         # Note: When searching by ID, MB usually returns 'disc' -> 'release-list'
+#         if result and "disc" in result:
+#             return result["disc"].get("release-list", [])
 
-        # Some versions of the API/Library return 'release-list' at the top level
-        if "release-list" in result:
-            return result["release-list"]
+#         # Some versions of the API/Library return 'release-list' at the top level
+#         if "release-list" in result:
+#             return result["release-list"]
 
-        return []
+#         return []
 
-    except musicbrainzngs.ResponseError as e:
-        print(f"Disc ID not found or error: {e}")
-        return []
-    except Exception as e:
-        print(f"Lookup failed: {e}")
-        return None
+#     except musicbrainzngs.ResponseError as e:
+#         print(f"Disc ID not found or error: {e}")
+#         return []
+#     except Exception as e:
+#         print(f"Lookup failed: {e}")
+#         return None
 
 
 def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
@@ -163,6 +165,14 @@ def print_release_table(releases: list) -> None:
         ("Quality", release.get("quality", "N/A")),
         ("Barcode", release.get("barcode", "N/A")),
         ("Format", release.get("packaging", "N/A")),
+        (
+            "Label",
+            release.get("label-info-list", [{}])[0].get("label", {}).get("name", "N/A"),
+        ),
+        (
+            "Catalog #",
+            release.get("label-info-list", [{}])[0].get("catalog-number", "N/A"),
+        ),
     ]
 
     print(f"{'Field':<20} | {'Value'}")
@@ -389,8 +399,6 @@ def main():
         sys.exit(1)
 
     releases = get_releases_by_toc(cdtoc, lengths)
-    if releases is None:
-        releases = get_releases_by_discid("oCqvhtImT5b3CmJTwFTFml5cZtE-")
 
     if args.verbose:
         pprint.pprint(releases, indent=2, width=40)
@@ -404,6 +412,9 @@ def main():
         print_release_table(releases)
         print_tracks(releases)
         print("")
+
+        if args.verbose:
+            pprint.pprint(releases, indent=2, width=40, depth=2)
 
         rip_and_encode(releases[-1], 5, args.skip)
     else:
