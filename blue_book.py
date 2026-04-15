@@ -319,18 +319,17 @@ def get_track_path(album_dir: Path, info: dict, template: str) -> Path:
     return album_dir.joinpath(template.format(**context))
 
 
-def rip_and_encode(release: dict, passes: int, skip: bool) -> None:
+def rip_and_encode(release: dict, passes: int) -> None:
     meta = get_metadata(release)
 
-    if not skip:
-        print(f"Starting riprip with {passes} passes...")
-        try:
-            subprocess.run(
-                ["riprip", "--passes", str(passes)], input="y\n", text=True, check=True
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"Error ripping disc: {e}")
-            return
+    print(f"Starting riprip with {passes} passes...")
+    try:
+        subprocess.run(
+            ["riprip", "--passes", str(passes)], input="y\n", text=True, check=True
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Error ripping disc: {e}")
+        return
 
     album_path = get_album_path(DEFAULT_OUTPUT, meta, DIR_TEMPLATE)
     album_path.mkdir(parents=True, exist_ok=True)
@@ -393,7 +392,7 @@ def main():
         "-s",
         "--skip",
         action="store_true",
-        help="skip the ripping process",
+        help="skip the ripping and encoding process",
     )
     args = parser.parse_args()
 
@@ -412,14 +411,16 @@ def main():
             print(
                 f"Warning: Found {len(releases)} matching releases, using the last one.\n"
             )
-        print_release_table(releases)
-        print_tracks(releases)
-        print("")
+        if releases:
+            print_release_table(releases)
+            print_tracks(releases)
+            print("")
+        else:
+            print("No releases matched your specific filters.")
+            return
 
-        if args.verbose:
-            pprint.pprint(releases, indent=2, width=40, depth=2)
-
-        rip_and_encode(releases[-1], 5, args.skip)
+        if not args.skip:
+            rip_and_encode(releases[-1], 5)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
