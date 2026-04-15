@@ -32,7 +32,7 @@ musicbrainzngs.set_useragent(
 )
 
 
-def extract_cdtoc() -> str | None:
+def extract_cdtoc() -> tuple[str, list[int]] | None:
     """Runs riprip --no-rip and parses the CDTOC from the output."""
     print("Scanning disc for CDTOC...")
     try:
@@ -45,7 +45,12 @@ def extract_cdtoc() -> str | None:
 
         if match:
             cdtoc = match.group(1)
-            return cdtoc
+
+            pattern = re.compile(r"^\s*(\d{2})\s+(\d+)\s+(\d+)\s+(\d+)")
+            # Grabs the 4th group (length) from every match and converts to int
+            lengths = [int(m.group(4)) for m in pattern.finditer(result.stderr)]
+
+            return (cdtoc, lengths)
 
         print("Could not find CDTOC in riprip output.")
         return None
@@ -59,16 +64,16 @@ def extract_cdtoc() -> str | None:
         return None
 
 
-def get_releases_by_toc(toc_string) -> list | None:
+def get_releases_by_toc(toc_string: str, lengths: list[int]) -> list | None:
     # Step 1: Split and convert hex to int
     parts = [int(x, 16) for x in toc_string.split("+")]
 
     # Step 2: Extract the key components
     num_tracks = parts[0]
-    # The Lead-out for the audio session is the offset immediately
-    # following the last audio track.
-    audio_lead_out = parts[num_tracks + 1]
+    # We calculate the Audio Lead-out by adding the total audio length to the start offset.
+    # This ignores 'Data Track' padding/pre-gaps that would otherwise cause a duration mismatch.
     track_offsets = parts[1 : num_tracks + 1]
+    audio_lead_out = track_offsets[0] + sum(lengths[:num_tracks])
 
     # Step 3: Format the TOC query
     # Format: "FirstTrack LastTrack AudioLeadOut Offset1 Offset2..."
@@ -372,11 +377,11 @@ def main():
     )
     args = parser.parse_args()
 
-    cdtoc = args.toc or extract_cdtoc()
+    cdtoc, lengths = args.toc or extract_cdtoc()
     if not cdtoc:
         sys.exit(1)
 
-    releases = get_releases_by_toc(cdtoc)
+    releases = get_releases_by_toc(cdtoc, lengths)
     if releases is None:
         releases = get_releases_by_discid("oCqvhtImT5b3CmJTwFTFml5cZtE-")
 
