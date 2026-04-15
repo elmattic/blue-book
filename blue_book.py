@@ -46,9 +46,9 @@ def extract_cdtoc() -> tuple[str, list[int]] | None:
         if match:
             cdtoc = match.group(1)
 
-            pattern = re.compile(r"^\s*(\d{2})\s+(\d+)\s+(\d+)\s+(\d+)")
-            # Grabs the 4th group (length) from every match and converts to int
-            lengths = [int(m.group(4)) for m in pattern.finditer(result.stderr)]
+            pattern = re.compile(r"\d{2}\s+\d+\s+\d+\s+(\d+)")
+            # Grabs the length from every match and converts to int
+            lengths = [int(m.group(1)) for m in pattern.finditer(result.stderr)]
 
             return (cdtoc, lengths)
 
