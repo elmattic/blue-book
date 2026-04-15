@@ -32,7 +32,7 @@ musicbrainzngs.set_useragent(
 )
 
 
-def extract_cdtoc() -> tuple[str, list[int]] | None:
+def extract_cdtoc() -> tuple[str, str, list[int]] | None:
     """Runs riprip --no-rip and parses the CDTOC from the output."""
     print("Scanning disc for CDTOC...")
     try:
@@ -40,19 +40,20 @@ def extract_cdtoc() -> tuple[str, list[int]] | None:
             ["riprip", "--no-rip"], capture_output=True, text=True, check=True
         )
 
-        pattern = r"([0-9A-F]+(?:\+[0-9A-F]+)+)"
-        match = re.search(pattern, result.stderr, re.IGNORECASE)
+        cdtoc_pat = r"CDTOC:.*?([0-9A-F]+(?:\+[0-9A-F]+)+)"
+        cddb_pat = r"CDDB:.*?([0-9a-f]{8})"
 
-        if match:
-            cdtoc = match.group(1)
+        cdtoc = re.search(cdtoc_pat, result.stderr, re.IGNORECASE).group(1)
+        cddb = re.search(cddb_pat, result.stderr, re.IGNORECASE).group(1)
 
+        if cdtoc and cddb:
             pattern = re.compile(r"\d{2}\s+\d+\s+\d+\s+(\d+)")
             # Grabs the length from every match and converts to int
             lengths = [int(m.group(1)) for m in pattern.finditer(result.stderr)]
 
-            return (cdtoc, lengths)
+            return (cdtoc, cddb, lengths)
 
-        print("Could not find CDTOC in riprip output.")
+        print("Could not find CDTOC or CDDB in riprip output.")
         return None
 
     except FileNotFoundError:
@@ -73,7 +74,7 @@ def get_releases_by_toc(toc_string: str, lengths: list[int]) -> list | None:
     # We calculate the Audio Lead-out by adding the total audio length to the start offset.
     # This ignores 'Data Track' padding/pre-gaps that would otherwise cause a duration mismatch.
     track_offsets = parts[1 : num_tracks + 1]
-    audio_lead_out = track_offsets[0] + sum(lengths[:num_tracks])
+    audio_lead_out = track_offsets[0] + sum(lengths)
 
     # Step 3: Format the TOC query
     # Format: "FirstTrack LastTrack AudioLeadOut Offset1 Offset2..."
@@ -375,7 +376,6 @@ def main():
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="show raw data for debugging"
     )
-    parser.add_argument("--toc", type=str, help="manually provide a TOC string")
     parser.add_argument(
         "-b",
         "--barcode",
@@ -396,7 +396,7 @@ def main():
     )
     args = parser.parse_args()
 
-    cdtoc, lengths = args.toc or extract_cdtoc()
+    cdtoc, cddb, lengths = extract_cdtoc()
     if not cdtoc:
         sys.exit(1)
 
