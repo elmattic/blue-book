@@ -330,17 +330,22 @@ def rip_and_encode(release: dict, passes: int, skip: bool) -> None:
         print("No WAV files found in _riprip.")
         return
 
-    print(f"Encoding {len(wav_files)} tracks to FLAC...")
+    total = len(wav_files)
 
     for i, wav_path in enumerate(wav_files):
-        info = meta.get("tracks")[i + 1]
-
+        current = i + 1
+        info = meta.get("tracks")[current]
         track_path = get_track_path(album_path, info, FILE_TEMPLATE)
+
+        status = f"\rEncoding track...{current:02}/{total:02}"
+        sys.stdout.write(status)
+        sys.stdout.flush()
 
         try:
             create_track(wav_path, track_path, info)
         except subprocess.CalledProcessError as e:
-            print(f"Error converting {wav_path.name}: {e}")
+            # Print error on a new line so it doesn't get overwritten
+            print(f"\nError converting {wav_path.name}: {e}")
             continue
 
         # wav_path.unlink()
