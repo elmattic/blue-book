@@ -82,7 +82,8 @@ def extract_cdtoc() -> tuple[str, str, list[int]] | None:
         return None
 
     except subprocess.CalledProcessError as e:
-        print(f"Error scanning disc: {e}")
+        if e.stderr:
+            print(e.stderr.strip())
         return None
 
 
@@ -358,7 +359,7 @@ def create_track(
     if args.verbose:
         cmd += ["-loglevel", "info"]
     else:
-        cmd += ["-loglevel", "warn", "-stats"]
+        cmd += ["-loglevel", "error", "-stats"]
     cmd += ffmpeg_input
 
     # Codec-specific flags
@@ -473,13 +474,14 @@ def main():
         type=AudioFormat.from_str,
         choices=list(AudioFormat),
         default=AudioFormat.FLAC,
-        help="Output audio format",
+        help="output audio format",
     )
     args = parser.parse_args()
 
-    cdtoc, cddb, lengths = extract_cdtoc()
-    if not cdtoc:
+    option = extract_cdtoc()
+    if not option:
         sys.exit(1)
+    cdtoc, cddb, lengths = option
 
     releases = get_releases_by_toc(cdtoc, lengths)
 
