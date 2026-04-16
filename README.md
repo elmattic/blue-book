@@ -1,6 +1,6 @@
 # blue-book
 
-blue-book is a bit-perfect CD ripper and archival utility. It guarantees sector-perfect accuracy via **AccurateRip** verification, automating the pipeline from raw disc data to fully tagged, lossless FLAC archives.
+blue-book is a bit-perfect CD ripper and archival utility. It guarantees sector-perfect accuracy via **AccurateRip** verification, automating the pipeline from raw disc data to fully tagged, lossless FLAC or ALAC archives.
 
 # Dependencies:
 
