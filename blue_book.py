@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from enum import Enum
 from pathlib import Path
 
 import musicbrainzngs
@@ -21,14 +22,28 @@ __version__ = "0.1.0"
 # Define the default: ~/.blue-book"
 DEFAULT_OUTPUT = Path.home() / ".blue-book"
 
-# A two-level hierarchy: Artist/Album/01 - Title.flac
+# A two-level hierarchy: Artist/Album/Tracknum - Title.Suffix
 DIR_TEMPLATE = "{artist}/{album}"
-FILE_TEMPLATE = "{tracknum:02d} - {title}.flac"
+FILE_TEMPLATE = "{tracknum:02d} - {title}.{suffix}"
 
 # Identify our tool to MusicBrainz
 musicbrainzngs.set_useragent(
     os.path.basename(__file__), __version__, "https://github.com/elmattic/blue-book"
 )
+
+
+class AudioFormat(Enum):
+    # Value format: (ffmpeg_codec, file_extension)
+    FLAC = ("flac", "flac")
+    ALAC = ("alac", "m4a")
+
+    @property
+    def codec(self):
+        return self.value[0]
+
+    @property
+    def suffix(self):
+        return self.value[1]
 
 
 def extract_cdtoc() -> tuple[str, str, list[int]] | None:
@@ -281,12 +296,13 @@ def get_album_path(root: Path, meta: dict, template: str) -> Path:
     return root.joinpath(template.format(**context))
 
 
-def get_track_path(album_dir: Path, info: dict, template: str) -> Path:
+def get_track_path(album_dir: Path, info: dict, suffix: str, template: str) -> Path:
     """Uses the existing track 'info' dict to create the filename."""
     context = {
         "tracknum": int(info.get("tracknumber")),
         "title": sanitize(info.get("title")),
         "artist": sanitize(info.get("artist")),
+        "suffix": suffix,
     }
     return album_dir.joinpath(template.format(**context))
 
@@ -313,7 +329,11 @@ def parse_riprip_cue(cue_path: Path) -> dict:
 
 
 def create_track(
-    wav_files: list[Path], flac_path: Path, track_info: dict, dry_run: bool
+    wav_files: list[Path],
+    file_out: Path,
+    track_info: dict,
+    format: AudioFormat,
+    dry_run: bool,
 ):
     """
     Merges one or more WAVs into a single FLAC and applies tags.
@@ -336,11 +356,13 @@ def create_track(
     if dry_run:
         cmd += ["-f", "null", "-"]
     else:
+        # Codec-specific flags
+        if format == AudioFormat.FLAC:
+            cmd += ["-compression_level", "8"]
+
         cmd += [
             "-c:a",
-            "flac",
-            "-compression_level",
-            "8",
+            format.codec,
             "-metadata",
             f"title={track_info['title']}",
             "-metadata",
@@ -353,7 +375,7 @@ def create_track(
             f"track={track_info['tracknumber']}",
             "-metadata",
             f"totaltracks={track_info['tracktotal']}",
-            str(flac_path),
+            str(file_out),
             "-y",
         ]
 
@@ -365,7 +387,9 @@ def create_track(
             os.remove(concat_file)
 
 
-def create_album(cue_path: Path, meta: dict, album_path: Path, dry_run: bool) -> None:
+def create_album(
+    cue_path: Path, meta: dict, album_path: Path, format: AudioFormat, dry_run: bool
+) -> None:
 
     data = parse_riprip_cue(cue_path)
 
@@ -376,12 +400,14 @@ def create_album(cue_path: Path, meta: dict, album_path: Path, dry_run: bool) ->
         wav_paths = [Path("_riprip") / item["file"] for item in sorted_segments]
 
         info = meta.get("tracks")[int(trk)]
-        flac_out = get_track_path(album_path, info, FILE_TEMPLATE)
+        file_out = get_track_path(album_path, info, format.suffix, FILE_TEMPLATE)
 
-        create_track(wav_paths, flac_out, info, dry_run)
+        create_track(wav_paths, file_out, info, format, dry_run)
 
 
-def rip_and_encode(release: dict, passes: int, cddb: str, skip: bool) -> None:
+def rip_and_encode(
+    release: dict, passes: int, cddb: str, format: AudioFormat, skip: bool
+) -> None:
     if not skip:
         print(f"Starting ripping process with {passes} passes...")
         try:
@@ -403,7 +429,7 @@ def rip_and_encode(release: dict, passes: int, cddb: str, skip: bool) -> None:
         print("No cue file found in _riprip.")
         return
 
-    create_album(cue_path, meta, album_path, dry_run=False)
+    create_album(cue_path, meta, album_path, format, dry_run=False)
 
     print(f"\nSuccess! Files located in: {album_path}")
 
@@ -461,7 +487,7 @@ def main():
             print("No releases matched your specific filters.")
             return
 
-        rip_and_encode(releases[-1], 5, cddb, args.skip)
+        rip_and_encode(releases[-1], 5, cddb, AudioFormat.FLAC, args.skip)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
