@@ -134,19 +134,19 @@ Status: Recovery is (roughly) 99.995% – 99.996% complete.
 
 The fruits of your labor:
   /home/elmattic/Test/_riprip/960a1c0c.cue
-  /home/elmattic/Test/riprip/960a1c0c_00.wav            *         *
-  /home/elmattic/Test/riprip/960a1c0c_01.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_02.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_03.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_04.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_05.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_06.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_07.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_08.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_09.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_10.wav        99+99       999
-  /home/elmattic/Test/riprip/960a1c0c_11.wav                       
-  /home/elmattic/Test/riprip/960a1c0c_12.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_00.wav            *         *
+  /home/elmattic/Test/_riprip/960a1c0c_01.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_02.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_03.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_04.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_05.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_06.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_07.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_08.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_09.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_10.wav        99+99       999
+  /home/elmattic/Test/_riprip/960a1c0c_11.wav                       
+  /home/elmattic/Test/_riprip/960a1c0c_12.wav        99+99       999
                                                  AccurateRip  CUETools  (12/13)
 
 * HTOA tracks cannot be verified w/ AccurateRip or CTDB,
