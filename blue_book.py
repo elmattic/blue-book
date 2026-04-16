@@ -34,8 +34,8 @@ musicbrainzngs.set_useragent(
 
 class AudioFormat(Enum):
     # Value format: (ffmpeg_codec, file_extension)
-    FLAC = ("flac", "flac", "Free Lossless Audio Codec")
-    ALAC = ("alac", "m4a", "Apple Lossless Audio Codec")
+    FLAC = ("flac", "flac")
+    ALAC = ("alac", "m4a")
 
     @classmethod
     def from_str(cls, label):
@@ -44,6 +44,9 @@ class AudioFormat(Enum):
         except KeyError:
             raise argparse.ArgumentTypeError(f"Invalid format: {label}")
 
+    def __str__(self):
+        return self.codec
+
     @property
     def codec(self):
         return self.value[0]
@@ -51,10 +54,6 @@ class AudioFormat(Enum):
     @property
     def suffix(self):
         return self.value[1]
-
-    @property
-    def desc(self):
-        return self.value[2]
 
 
 def extract_cdtoc() -> tuple[str, str, list[int]] | None:
@@ -403,7 +402,7 @@ def create_album(
 
     data = parse_riprip_cue(cue_path)
 
-    print(f"Converting {len(data.items())} files using {args.format.codec}...")
+    print(f"Converting {len(data.items())} files using {args.format.name}...")
     for trk, info in data.items():
         # Extract files and sort them by index (00, then 01)
         # This ensures the Pre-gap is prepended to the Audio
