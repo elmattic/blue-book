@@ -14,7 +14,7 @@ export CFLAGS="-I/opt/homebrew/include"
 export LDFLAGS="-L/opt/homebrew/lib"
 export PKG_CONFIG_PATH="/opt/homebrew/opt/libcdio/lib/pkgconfig"
 
-cargo install --git https://github.com/Blobfolio/riprip.git --bin riprip
+cargo install --git https://github.com/Blobfolio/riprip.git --bin riprip --tag v0.5.5
 ```
 
 ## Python Environment
@@ -26,7 +26,7 @@ This project uses **PEP 723** inline metadata. We recommend using [uv](https://g
 Insert a CD and run:
 
 ```bash
-$ uv run blue_book.py
+uv run blue_book.py
 ```
 
 Feel free to experiment with different flags, but you’ll typically want to run a dry run first using `--skip`. This allows you to finalize your tags (fetched on [MusicBrainz](https://musicbrainz.org/)) before starting the rip.
@@ -34,7 +34,7 @@ Feel free to experiment with different flags, but you’ll typically want to run
 Generally, you can provide the barcode and country of the release to improve accuracy. Once you're all set, simply re-run the command without the `--skip` flag.
 
 ```console
-$ uv run blue_book.py -b 077774620727 -c GB -f alac
+uv run blue_book.py -b 077774620727 -c GB -f alac
 Scanning disc for CDTOC...
 1 12 194284 182 16990 22032 35915 48827 64632 82890 93060 130592 146982 162240 188795
 
