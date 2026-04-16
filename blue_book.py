@@ -2,7 +2,6 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "musicbrainzngs",
-#     "mutagen",
 # ]
 # ///
 
@@ -15,7 +14,6 @@ import sys
 from pathlib import Path
 
 import musicbrainzngs
-from mutagen.flac import FLAC
 
 __version__ = "0.1.0"
 
@@ -262,34 +260,6 @@ def get_metadata(release: dict) -> dict:
     }
 
 
-def create_track(wav_path: Path, flac_path: Path, track_info: dict) -> None:
-    """Converts a single WAV to FLAC and applies tags."""
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-i",
-            str(wav_path),
-            "-compression_level",
-            "8",
-            str(flac_path),
-            "-y",
-        ],
-        capture_output=True,
-        check=True,
-    )
-
-    if flac_path.exists():
-        # Tagging
-        audio = FLAC(flac_path)
-        audio["title"] = track_info["title"]
-        audio["artist"] = track_info["artist"]
-        audio["album"] = track_info["album"]
-        audio["date"] = track_info["date"]
-        audio["tracknumber"] = str(track_info["tracknumber"])
-        audio["tracktotal"] = str(track_info["tracktotal"])
-        audio.save()
-
-
 def sanitize(text: str) -> str:
     """Removes or replaces characters that are illegal in file systems."""
     if not text:
@@ -320,7 +290,84 @@ def get_track_path(album_dir: Path, info: dict, template: str) -> Path:
     return album_dir.joinpath(template.format(**context))
 
 
-def rip_and_encode(release: dict, passes: int) -> None:
+def parse_riprip_cue(cue_path: Path) -> dict:
+    tracks = {}
+    current_file = None
+    current_track = None
+
+    with open(cue_path, "r") as f:
+        for line in f:
+            line = line.strip()
+
+            if line.startswith("FILE"):
+                current_file = re.findall(r'"(.*?)"', line)[0]
+            elif line.startswith("TRACK"):
+                current_track = line.split()[1]
+                tracks[current_track] = []
+            elif line.startswith("INDEX") and current_track:
+                index_num = line.split()[1]
+                tracks[current_track].append({"index": index_num, "file": current_file})
+
+    return tracks
+
+
+def create_track(
+    wav_files: list[Path], flac_path: Path, track_info: dict, dry_run: bool
+):
+    """
+    Merges one or more WAVs into a single FLAC and applies tags.
+    """
+    if len(wav_files) > 1:
+        ffmpeg_input = "concat:" + "|".join(str(f) for f in wav_files)
+    else:
+        ffmpeg_input = str(wav_files[0])
+
+    cmd = ["ffmpeg", "-i", ffmpeg_input]
+
+    if dry_run:
+        cmd += ["-f", "null", "-"]
+    else:
+        cmd += [
+            "-c:a",
+            "flac",
+            "-compression_level",
+            "8",
+            "-metadata",
+            f"title={track_info['title']}",
+            "-metadata",
+            f"artist={track_info['artist']}",
+            "-metadata",
+            f"album={track_info['album']}",
+            "-metadata",
+            f"date={track_info['date']}",
+            "-metadata",
+            f"track={track_info['tracknumber']}",
+            "-metadata",
+            f"totaltracks={track_info['tracktotal']}",
+            str(flac_path),
+            "-y",
+        ]
+
+    subprocess.run(cmd, check=True)
+
+
+def create_album(cue_path: Path, meta: dict, album_path: Path, dry_run: bool) -> None:
+
+    data = parse_riprip_cue(cue_path)
+
+    for trk, info in data.items():
+        # Extract files and sort them by index (00, then 01)
+        # This ensures the Pre-gap is prepended to the Audio
+        sorted_segments = sorted(info, key=lambda x: x["index"])
+        wav_paths = [Path(item["file"]) for item in sorted_segments]
+
+        info = meta.get("tracks")[int(trk)]
+        flac_out = get_track_path(album_path, info, FILE_TEMPLATE)
+
+        create_track(wav_paths, flac_out, info, dry_run)
+
+
+def rip_and_encode(release: dict, passes: int, cddb: str) -> None:
     meta = get_metadata(release)
 
     print(f"Starting riprip with {passes} passes...")
@@ -337,31 +384,13 @@ def rip_and_encode(release: dict, passes: int) -> None:
 
     riprip_dir = Path("_riprip")
 
-    wav_files = sorted(list(riprip_dir.glob("*.wav")))
+    cue_path = riprip_dir / f"{cddb}.cue"
 
-    if not wav_files:
-        print("No WAV files found in _riprip.")
+    if not cue_path.is_file():
+        print("No cue file found in _riprip.")
         return
 
-    total = len(wav_files)
-
-    for i, wav_path in enumerate(wav_files):
-        current = i + 1
-        info = meta.get("tracks")[current]
-        track_path = get_track_path(album_path, info, FILE_TEMPLATE)
-
-        status = f"\rEncoding track...{current:02}/{total:02}"
-        sys.stdout.write(status)
-        sys.stdout.flush()
-
-        try:
-            create_track(wav_path, track_path, info)
-        except subprocess.CalledProcessError as e:
-            # Print error on a new line so it doesn't get overwritten
-            print(f"\nError converting {wav_path.name}: {e}")
-            continue
-
-        # wav_path.unlink()
+    create_album(cue_path, meta, album_path, True)
 
     print(f"\nSuccess! Files located in: {album_path}")
 
@@ -420,7 +449,7 @@ def main():
             return
 
         if not args.skip:
-            rip_and_encode(releases[-1], 5)
+            rip_and_encode(releases[-1], 5, cddb)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
