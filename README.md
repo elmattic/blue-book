@@ -17,6 +17,14 @@ export PKG_CONFIG_PATH="/opt/homebrew/opt/libcdio/lib/pkgconfig"
 cargo install --git https://github.com/Blobfolio/riprip.git --bin riprip --tag v0.5.5
 ```
 
+For Linux installation instructions, refer to the [Rip Rip Hooray!](https://github.com/Blobfolio/riprip?tab=readme-ov-file#installation) repository.
+
+## ffmpeg
+
+```bash
+brew list ffmpeg
+```
+
 ## Python Environment
 
 This project uses **PEP 723** inline metadata. We recommend using [uv](https://github.com/astral-sh/uv) for a seamless experience—it will automatically handle Python versioning and dependencies without needing a virtualenv.
