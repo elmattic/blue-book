@@ -329,9 +329,9 @@ def create_track(
         # Use the 'concat' demuxer instead of the 'concat' protocol
         ffmpeg_input = ["-f", "concat", "-safe", "0", "-i", concat_file]
     else:
-        ffmpeg_input = str(wav_files[0])
+        ffmpeg_input = ["-i", str(wav_files[0])]
 
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info", "-i", ffmpeg_input]
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info", "-i"] + ffmpeg_input
 
     if dry_run:
         cmd += ["-f", "null", "-"]
@@ -381,17 +381,18 @@ def create_album(cue_path: Path, meta: dict, album_path: Path, dry_run: bool) ->
         create_track(wav_paths, flac_out, info, dry_run)
 
 
-def rip_and_encode(release: dict, passes: int, cddb: str) -> None:
-    meta = get_metadata(release)
+def rip_and_encode(release: dict, passes: int, cddb: str, skip: bool) -> None:
+    if not skip:
+        print(f"Starting ripping process with {passes} passes...")
+        try:
+            subprocess.run(
+                ["riprip", "--passes", str(passes)], input="y\n", text=True, check=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"Error ripping disc: {e}")
+            return
 
-    print(f"Starting riprip with {passes} passes...")
-    try:
-        subprocess.run(
-            ["riprip", "--passes", str(passes)], input="y\n", text=True, check=True
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"Error ripping disc: {e}")
-        return
+    meta = get_metadata(release)
 
     album_path = get_album_path(DEFAULT_OUTPUT, meta, DIR_TEMPLATE)
     album_path.mkdir(parents=True, exist_ok=True)
@@ -402,7 +403,7 @@ def rip_and_encode(release: dict, passes: int, cddb: str) -> None:
         print("No cue file found in _riprip.")
         return
 
-    create_album(cue_path, meta, album_path, True)
+    create_album(cue_path, meta, album_path, dry_run=False)
 
     print(f"\nSuccess! Files located in: {album_path}")
 
@@ -433,7 +434,7 @@ def main():
         "-s",
         "--skip",
         action="store_true",
-        help="skip the ripping and encoding process",
+        help="skip the ripping process",
     )
     args = parser.parse_args()
 
@@ -460,8 +461,7 @@ def main():
             print("No releases matched your specific filters.")
             return
 
-        if not args.skip:
-            rip_and_encode(releases[-1], 5, cddb)
+        rip_and_encode(releases[-1], 5, cddb, args.skip)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
