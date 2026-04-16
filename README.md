@@ -22,7 +22,7 @@ For Linux installation instructions, refer to the [Rip Rip Hooray!](https://gith
 ## ffmpeg
 
 ```bash
-brew list ffmpeg
+brew install ffmpeg
 ```
 
 ## Python Environment
