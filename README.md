@@ -29,7 +29,7 @@ Insert a CD and run:
 $ uv run blue_book.py
 ```
 
-Feel free to experiment with different flags, but you’ll typically want to run a dry run first using `--skip`. This allows you to finalize your tags (fetched on [Musicbrainz](https://musicbrainz.org/)) before starting the rip.
+Feel free to experiment with different flags, but you’ll typically want to run a dry run first using `--skip`. This allows you to finalize your tags (fetched on [MusicBrainz](https://musicbrainz.org/)) before starting the rip.
 
 Generally, you can provide the barcode and country of the release to improve accuracy. Once you're all set, simply re-run the command without the `--skip` flag.
 
