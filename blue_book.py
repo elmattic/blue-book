@@ -400,7 +400,7 @@ def create_album(
         wav_paths = [Path("_riprip") / item["file"] for item in sorted_segments]
 
         info = meta.get("tracks")[int(trk)]
-        file_out = get_track_path(album_path, info, format.suffix, FILE_TEMPLATE)
+        file_out = get_track_path(album_path, info, args.format.suffix, FILE_TEMPLATE)
 
         create_track(wav_paths, file_out, info, args)
 
