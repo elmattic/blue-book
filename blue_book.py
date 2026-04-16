@@ -331,7 +331,7 @@ def create_track(
     else:
         ffmpeg_input = ["-i", str(wav_files[0])]
 
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info", "-i"] + ffmpeg_input
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info"] + ffmpeg_input
 
     if dry_run:
         cmd += ["-f", "null", "-"]
