@@ -11,6 +11,7 @@ import pprint
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import musicbrainzngs
@@ -318,11 +319,19 @@ def create_track(
     Merges one or more WAVs into a single FLAC and applies tags.
     """
     if len(wav_files) > 1:
-        ffmpeg_input = "concat:" + "|".join(str(f) for f in wav_files)
+        # Create a temporary file for the concat instructions
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            for wav in wav_files:
+                # Use absolute paths and escape single quotes for safety
+                f.write(f"file '{wav.absolute()}'\n")
+            concat_file = f.name
+
+        # Use the 'concat' demuxer instead of the 'concat' protocol
+        ffmpeg_input = ["-f", "concat", "-safe", "0", "-i", concat_file]
     else:
         ffmpeg_input = str(wav_files[0])
 
-    cmd = ["ffmpeg", "-i", ffmpeg_input]
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info", "-i", ffmpeg_input]
 
     if dry_run:
         cmd += ["-f", "null", "-"]
@@ -348,7 +357,12 @@ def create_track(
             "-y",
         ]
 
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    finally:
+        # Clean up the temp file if we made one
+        if len(wav_files) > 1:
+            os.remove(concat_file)
 
 
 def create_album(cue_path: Path, meta: dict, album_path: Path, dry_run: bool) -> None:
@@ -359,7 +373,7 @@ def create_album(cue_path: Path, meta: dict, album_path: Path, dry_run: bool) ->
         # Extract files and sort them by index (00, then 01)
         # This ensures the Pre-gap is prepended to the Audio
         sorted_segments = sorted(info, key=lambda x: x["index"])
-        wav_paths = [Path(item["file"]) for item in sorted_segments]
+        wav_paths = [Path("_riprip") / item["file"] for item in sorted_segments]
 
         info = meta.get("tracks")[int(trk)]
         flac_out = get_track_path(album_path, info, FILE_TEMPLATE)
@@ -382,9 +396,7 @@ def rip_and_encode(release: dict, passes: int, cddb: str) -> None:
     album_path = get_album_path(DEFAULT_OUTPUT, meta, DIR_TEMPLATE)
     album_path.mkdir(parents=True, exist_ok=True)
 
-    riprip_dir = Path("_riprip")
-
-    cue_path = riprip_dir / f"{cddb}.cue"
+    cue_path = Path("_riprip") / f"{cddb}.cue"
 
     if not cue_path.is_file():
         print("No cue file found in _riprip.")
