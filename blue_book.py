@@ -354,7 +354,12 @@ def create_track(
     else:
         ffmpeg_input = ["-i", str(wav_files[0])]
 
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info"] + ffmpeg_input
+    cmd = ["ffmpeg", "-hide_banner"]
+    if args.verbose:
+        cmd += ["-loglevel", "info"]
+    else:
+        cmd += ["-loglevel", "warn", "-stats"]
+    cmd += ffmpeg_input
 
     # Codec-specific flags
     if args.format == AudioFormat.FLAC:
