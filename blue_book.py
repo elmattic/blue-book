@@ -37,6 +37,13 @@ class AudioFormat(Enum):
     FLAC = ("flac", "flac")
     ALAC = ("alac", "m4a")
 
+    @classmethod
+    def from_str(cls, label):
+        try:
+            return cls[label.upper()]
+        except KeyError:
+            raise argparse.ArgumentTypeError(f"Invalid format: {label}")
+
     @property
     def codec(self):
         return self.value[0]
@@ -462,6 +469,14 @@ def main():
         action="store_true",
         help="skip the ripping process",
     )
+    parser.add_argument(
+        "-f",
+        "--format",
+        type=AudioFormat.from_str,
+        choices=list(AudioFormat),
+        default=AudioFormat.FLAC,
+        help="Output audio format",
+    )
     args = parser.parse_args()
 
     cdtoc, cddb, lengths = extract_cdtoc()
@@ -487,7 +502,7 @@ def main():
             print("No releases matched your specific filters.")
             return
 
-        rip_and_encode(releases[-1], 5, cddb, AudioFormat.FLAC, args.skip)
+        rip_and_encode(releases[-1], 5, cddb, args.format, args.skip)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
