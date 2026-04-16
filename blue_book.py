@@ -34,8 +34,8 @@ musicbrainzngs.set_useragent(
 
 class AudioFormat(Enum):
     # Value format: (ffmpeg_codec, file_extension)
-    FLAC = ("flac", "flac")
-    ALAC = ("alac", "m4a")
+    FLAC = ("flac", "flac", "Free Lossless Audio Codec")
+    ALAC = ("alac", "m4a", "Apple Lossless Audio Codec")
 
     @classmethod
     def from_str(cls, label):
@@ -51,6 +51,10 @@ class AudioFormat(Enum):
     @property
     def suffix(self):
         return self.value[1]
+
+    @property
+    def desc(self):
+        return self.value[2]
 
 
 def extract_cdtoc() -> tuple[str, str, list[int]] | None:
@@ -234,11 +238,11 @@ def print_tracks(releases: list) -> None:
 
             # Printing with conditional formatting
             track_line = f"{num:>2}. {title}"
-            if duration:
-                track_line += f" ({duration})"
             # Only print featuring if it adds new information
             if track_artist and track_artist != album_artist:
-                track_line += f" - Featuring: {track_artist}"
+                track_line += f" - {track_artist}"
+            if duration:
+                track_line += f" ({duration})"
 
             print(track_line)
 
@@ -399,6 +403,7 @@ def create_album(
 
     data = parse_riprip_cue(cue_path)
 
+    print(f"Converting {len(data.items())} files using {args.format.codec}...")
     for trk, info in data.items():
         # Extract files and sort them by index (00, then 01)
         # This ensures the Pre-gap is prepended to the Audio
@@ -486,7 +491,7 @@ def main():
     releases = get_releases_by_toc(cdtoc, lengths)
 
     if args.verbose:
-        pprint.pprint(releases, indent=2, width=40)
+        pprint.pprint(releases, indent=2, width=40, depth=2)
 
     if releases:
         releases = find_best_release(releases, args)
