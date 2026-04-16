@@ -444,7 +444,7 @@ def rip_and_encode(
     print(f"\nSuccess! Files located in: {album_path}")
 
 
-def main():
+def create_parser():
     parser = argparse.ArgumentParser(
         description="Bit-perfect audio extraction and archival for CDs.",
     )
@@ -480,7 +480,11 @@ def main():
         default=AudioFormat.FLAC,
         help="output audio format",
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main():
+    args = create_parser().parse_args()
 
     option = extract_cdtoc()
     if not option:
