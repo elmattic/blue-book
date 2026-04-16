@@ -336,11 +336,7 @@ def parse_riprip_cue(cue_path: Path) -> dict:
 
 
 def create_track(
-    wav_files: list[Path],
-    file_out: Path,
-    track_info: dict,
-    format: AudioFormat,
-    dry_run: bool,
+    wav_files: list[Path], file_out: Path, track_info: dict, args: argparse.Namespace
 ):
     """
     Merges one or more WAVs into a single FLAC and applies tags.
@@ -360,31 +356,28 @@ def create_track(
 
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info"] + ffmpeg_input
 
-    if dry_run:
-        cmd += ["-f", "null", "-"]
-    else:
-        # Codec-specific flags
-        if format == AudioFormat.FLAC:
-            cmd += ["-compression_level", "8"]
+    # Codec-specific flags
+    if args.format == AudioFormat.FLAC:
+        cmd += ["-compression_level", "8"]
 
-        cmd += [
-            "-c:a",
-            format.codec,
-            "-metadata",
-            f"title={track_info['title']}",
-            "-metadata",
-            f"artist={track_info['artist']}",
-            "-metadata",
-            f"album={track_info['album']}",
-            "-metadata",
-            f"date={track_info['date']}",
-            "-metadata",
-            f"track={track_info['tracknumber']}",
-            "-metadata",
-            f"totaltracks={track_info['tracktotal']}",
-            str(file_out),
-            "-y",
-        ]
+    cmd += [
+        "-c:a",
+        args.format.codec,
+        "-metadata",
+        f"title={track_info['title']}",
+        "-metadata",
+        f"artist={track_info['artist']}",
+        "-metadata",
+        f"album={track_info['album']}",
+        "-metadata",
+        f"date={track_info['date']}",
+        "-metadata",
+        f"track={track_info['tracknumber']}",
+        "-metadata",
+        f"totaltracks={track_info['tracktotal']}",
+        str(file_out),
+        "-y",
+    ]
 
     try:
         subprocess.run(cmd, check=True)
@@ -395,7 +388,7 @@ def create_track(
 
 
 def create_album(
-    cue_path: Path, meta: dict, album_path: Path, format: AudioFormat, dry_run: bool
+    cue_path: Path, meta: dict, album_path: Path, args: argparse.Namespace
 ) -> None:
 
     data = parse_riprip_cue(cue_path)
@@ -409,13 +402,13 @@ def create_album(
         info = meta.get("tracks")[int(trk)]
         file_out = get_track_path(album_path, info, format.suffix, FILE_TEMPLATE)
 
-        create_track(wav_paths, file_out, info, format, dry_run)
+        create_track(wav_paths, file_out, info, args)
 
 
 def rip_and_encode(
-    release: dict, passes: int, cddb: str, format: AudioFormat, skip: bool
+    release: dict, passes: int, cddb: str, args: argparse.Namespace
 ) -> None:
-    if not skip:
+    if not args.skip:
         print(f"Starting ripping process with {passes} passes...")
         try:
             subprocess.run(
@@ -436,7 +429,7 @@ def rip_and_encode(
         print("No cue file found in _riprip.")
         return
 
-    create_album(cue_path, meta, album_path, format, dry_run=False)
+    create_album(cue_path, meta, album_path, args)
 
     print(f"\nSuccess! Files located in: {album_path}")
 
@@ -502,7 +495,7 @@ def main():
             print("No releases matched your specific filters.")
             return
 
-        rip_and_encode(releases[-1], 5, cddb, args.format, args.skip)
+        rip_and_encode(releases[-1], 5, cddb, args)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
