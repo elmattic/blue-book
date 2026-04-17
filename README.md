@@ -187,7 +187,7 @@ Success! Files located in: /home/elmattic/.blue-book/Queen/A Night at the Opera
   - An "as-is" mode that ignores hidden tracks.
   - An option to export a single FLAC file with an embedded or external CUE sheet.
 
-- **Configuration:** To prevent "flag creep," the tool should support TOML or INI configuration files. This allows for organized settings across different sections, while ensuring CLI arguments still retain override priority.
+- **Configuration:** To prevent "flag creep," the tool should support a TOML configuration file. This allows for organized settings across different sections, while ensuring CLI arguments still retain override priority.
 
 - **UX:** Release matching filters require improvements:
   - Visual highlighting (e.g., bolding) for matching metadata.
@@ -196,3 +196,5 @@ Success! Files located in: /home/elmattic/.blue-book/Queen/A Night at the Opera
 - **Tagging:** If metadata is missing or ambiguous, the tool should provide a prompt for manual correction. Ideally, it could even suggest these corrections back to the MusicBrainz db.
 
 - **Codec:** While the primary focus is on archival accuracy, the tool should eventually support lossy transcodes such as Ogg Vorbis, AAC, etc.
+
+- **Multi-disc:** Currently lacks native handling for multi-medium sets.

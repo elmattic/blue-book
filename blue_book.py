@@ -22,6 +22,8 @@ __version__ = "0.1.0"
 # Define the default: ~/.blue-book"
 DEFAULT_OUTPUT = Path.home() / ".blue-book"
 
+RIPRIP_PATH = Path("_riprip")
+
 # A two-level hierarchy: Artist/Album/Tracknum - Title.Suffix
 DIR_TEMPLATE = "{artist}/{album}"
 FILE_TEMPLATE = "{tracknum:02d} - {title}.{suffix}"
@@ -304,7 +306,7 @@ def get_album_path(root: Path, meta: dict, template: str) -> Path:
         "album": sanitize(meta.get("album_title")),
         "date": sanitize(meta.get("date")),
     }
-    return root.joinpath(template.format(**context))
+    return root / template.format(**context)
 
 
 def get_track_path(album_dir: Path, info: dict, suffix: str, template: str) -> Path:
@@ -315,7 +317,7 @@ def get_track_path(album_dir: Path, info: dict, suffix: str, template: str) -> P
         "artist": sanitize(info.get("artist")),
         "suffix": suffix,
     }
-    return album_dir.joinpath(template.format(**context))
+    return album_dir / (template.format(**context))
 
 
 def parse_riprip_cue(cue_path: Path) -> dict:
@@ -407,7 +409,7 @@ def create_album(
         # Extract files and sort them by index (00, then 01)
         # This ensures the Pre-gap is prepended to the Audio
         sorted_segments = sorted(info, key=lambda x: x["index"])
-        wav_paths = [Path("_riprip") / item["file"] for item in sorted_segments]
+        wav_paths = [RIPRIP_PATH / item["file"] for item in sorted_segments]
 
         info = meta.get("tracks")[int(trk)]
         file_out = get_track_path(album_path, info, args.format.suffix, FILE_TEMPLATE)
@@ -433,7 +435,7 @@ def rip_and_encode(
     album_path = get_album_path(DEFAULT_OUTPUT, meta, DIR_TEMPLATE)
     album_path.mkdir(parents=True, exist_ok=True)
 
-    cue_path = Path("_riprip") / f"{cddb}.cue"
+    cue_path = RIPRIP_PATH / f"{cddb}.cue"
 
     if not cue_path.is_file():
         print("No cue file found in _riprip.")
