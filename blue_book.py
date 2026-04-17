@@ -68,16 +68,18 @@ def extract_cdtoc() -> tuple[str, str, list[int]] | None:
 
         cdtoc_pat = r"CDTOC:.*?([0-9A-F]+(?:\+[0-9A-F]+)+)"
         cddb_pat = r"CDDB:.*?([0-9a-f]{8})"
+        discid_pat = r"MusicBrainz:.*?([a-zA-Z0-9._-]{27,28})"
 
         cdtoc = re.search(cdtoc_pat, result.stderr, re.IGNORECASE).group(1)
         cddb = re.search(cddb_pat, result.stderr, re.IGNORECASE).group(1)
+        discid = re.search(discid_pat, result.stderr, re.IGNORECASE).group(1)
 
-        if cdtoc and cddb:
+        if cdtoc and cddb and discid:
             pattern = re.compile(r"\d{2}\s+\d+\s+\d+\s+(\d+)")
             # Grabs the length from every match and converts to int
             lengths = [int(m.group(1)) for m in pattern.finditer(result.stderr)]
 
-            return (cdtoc, cddb, lengths)
+            return (cdtoc, cddb, lengths, discid)
 
         print("Could not find CDTOC or CDDB in riprip output.")
         return None
@@ -89,6 +91,29 @@ def extract_cdtoc() -> tuple[str, str, list[int]] | None:
     except subprocess.CalledProcessError as e:
         if e.stderr:
             print(e.stderr.strip())
+        return None
+
+
+def get_releases_by_discid(id: str) -> list | None:
+    print(id)
+    print("")
+
+    try:
+        result = musicbrainzngs.get_releases_by_discid(
+            id=id,
+            includes=[
+                "artists",
+                "artist-credits",
+                "recordings",
+                "labels",
+                "release-groups",
+                "media",
+            ],
+        )
+        releases = result.get("disc", {}).get("release-list", [])
+        return releases
+    except Exception as e:
+        print(f"Lookup failed: {e}")
         return None
 
 
@@ -482,6 +507,12 @@ def create_parser():
         default=AudioFormat.FLAC,
         help="output audio format",
     )
+    parser.add_argument(
+        "--toc",
+        type=str,
+        nargs="?",
+        help="manually provide a TOC string; if empty, the CDTOC is extracted via riprip",
+    )
     return parser
 
 
@@ -491,9 +522,14 @@ def main():
     option = extract_cdtoc()
     if not option:
         sys.exit(1)
-    cdtoc, cddb, lengths = option
+    cdtoc, cddb, lengths, discid = option
 
-    releases = get_releases_by_toc(cdtoc, lengths)
+    if args.toc:
+        if args.toc != "":
+            cdtoc = args.toc
+        releases = get_releases_by_toc(cdtoc, lengths)
+    else:
+        releases = get_releases_by_discid(discid)
 
     if args.verbose:
         pprint.pprint(releases, indent=2, width=40, depth=2)
