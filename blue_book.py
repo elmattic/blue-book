@@ -170,8 +170,18 @@ def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
     filtered = [
         r
         for r in releases
-        if (args.barcode is None or r.get("barcode") == args.barcode)
+        if (
+            args.barcode is None
+            or
+            # If search is empty string, match ONLY empty strings in data
+            (
+                r.get("barcode") == ""
+                if args.barcode == ""
+                else args.barcode in r.get("barcode")
+            )
+        )
         and (country is None or r.get("country") == country)
+        and (args.date is None or args.date in r.get("date"))
     ]
 
     return filtered
@@ -194,27 +204,27 @@ def print_release_table(releases: list) -> None:
     fields = [
         ("Release ID", release.get("id")),
         ("Album Title", release.get("title")),
-        ("Artist", artist_name or "N/A"),
-        ("Country", release.get("country", "N/A")),
-        ("Date", release.get("date", "N/A")),
-        ("Status", release.get("status", "N/A")),
-        ("Quality", release.get("quality", "N/A")),
-        ("Barcode", release.get("barcode", "N/A")),
-        ("Format", release.get("packaging", "N/A")),
+        ("Artist", artist_name),
+        ("Country", release.get("country")),
+        ("Date", release.get("date")),
+        ("Status", release.get("status")),
+        ("Quality", release.get("quality")),
+        ("Barcode", release.get("barcode")),
+        ("Format", release.get("packaging")),
         (
             "Label",
-            label_info.get("label", {}).get("name", "N/A"),
+            label_info.get("label", {}).get("name"),
         ),
         (
             "Catalog#",
-            label_info.get("catalog-number", "N/A"),
+            label_info.get("catalog-number"),
         ),
     ]
 
     print(f"{'Field':<20} | {'Value'}")
     print("-" * 60)
-    for label, value in fields:
-        print(f"{label:<20} | {value}")
+    for field, value in fields:
+        print(f"{field:<20} | {value or 'N/A'}")
 
 
 def print_tracks(releases: list) -> None:
@@ -473,6 +483,12 @@ def create_parser():
         "--country",
         type=str,
         help="filter release by country code (e.g., US, GB)",
+    )
+    parser.add_argument(
+        "-d",
+        "--date",
+        type=str,
+        help="filter release by date (YYYY-MM-DD)",
     )
     parser.add_argument(
         "-s",
