@@ -106,8 +106,6 @@ def get_releases_by_discid(id: str) -> list | None:
                 "artist-credits",
                 "recordings",
                 "labels",
-                "release-groups",
-                "media",
             ],
         )
         releases = result.get("disc", {}).get("release-list", [])
@@ -152,32 +150,6 @@ def get_releases_by_toc(toc_string: str, lengths: list[int]) -> list | None:
     except Exception as e:
         print(f"Lookup failed: {e}")
         return None
-
-
-# def get_releases_by_discid(disc_id: str) -> list | None:
-#     print(f"Querying MusicBrainz by Disc ID: {disc_id}")
-
-#     try:
-#         result = musicbrainzngs.get_releases_by_discid(
-#             id=disc_id, toc=None, includes=["artists", "artist-credits", "recordings"]
-#         )
-
-#         # Note: When searching by ID, MB usually returns 'disc' -> 'release-list'
-#         if result and "disc" in result:
-#             return result["disc"].get("release-list", [])
-
-#         # Some versions of the API/Library return 'release-list' at the top level
-#         if "release-list" in result:
-#             return result["release-list"]
-
-#         return []
-
-#     except musicbrainzngs.ResponseError as e:
-#         print(f"Disc ID not found or error: {e}")
-#         return []
-#     except Exception as e:
-#         print(f"Lookup failed: {e}")
-#         return None
 
 
 def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
@@ -511,6 +483,8 @@ def create_parser():
         "--toc",
         type=str,
         nargs="?",
+        const="EXTRACT",
+        default=None,
         help="manually provide a TOC string; if empty, the CDTOC is extracted via riprip",
     )
     return parser
@@ -525,7 +499,7 @@ def main():
     cdtoc, cddb, lengths, discid = option
 
     if args.toc:
-        if args.toc != "":
+        if args.toc != "EXTRACT":
             cdtoc = args.toc
         releases = get_releases_by_toc(cdtoc, lengths)
     else:
