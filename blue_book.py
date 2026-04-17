@@ -510,6 +510,9 @@ def main():
 
     if releases:
         releases = find_best_release(releases, args)
+        if args.verbose:
+            print("---")
+            pprint.pprint(releases, indent=2, width=40, depth=4)
         if len(releases) > 1:
             print(
                 f"Warning: Found {len(releases)} matching releases, using the last one.\n"
