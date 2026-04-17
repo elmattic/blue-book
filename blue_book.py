@@ -58,7 +58,7 @@ class AudioFormat(Enum):
         return self.value[1]
 
 
-def extract_cdtoc() -> tuple[str, str, list[int]] | None:
+def extract_cdtoc() -> tuple[str, str, str, list[int]] | None:
     """Runs riprip --no-rip and parses the CDTOC from the output."""
     print("Scanning disc for CDTOC...")
     try:
@@ -79,7 +79,7 @@ def extract_cdtoc() -> tuple[str, str, list[int]] | None:
             # Grabs the length from every match and converts to int
             lengths = [int(m.group(1)) for m in pattern.finditer(result.stderr)]
 
-            return (cdtoc, cddb, lengths, discid)
+            return (cdtoc, cddb, discid, lengths)
 
         print("Could not find CDTOC or CDDB in riprip output.")
         return None
@@ -115,9 +115,9 @@ def get_releases_by_discid(id: str) -> list | None:
         return None
 
 
-def get_releases_by_toc(toc_string: str, lengths: list[int]) -> list | None:
+def compute_toc_query(cdtoc: str, lengths: list[int]) -> str:
     # Step 1: Split and convert hex to int
-    parts = [int(x, 16) for x in toc_string.split("+")]
+    parts = [int(x, 16) for x in cdtoc.split("+")]
 
     # Step 2: Extract the key components
     num_tracks = parts[0]
@@ -129,6 +129,10 @@ def get_releases_by_toc(toc_string: str, lengths: list[int]) -> list | None:
     # Step 3: Format the TOC query
     # Format: "FirstTrack LastTrack AudioLeadOut Offset1 Offset2..."
     toc_query = f"1 {num_tracks} {audio_lead_out} " + " ".join(map(str, track_offsets))
+    return toc_query
+
+
+def get_releases_by_toc(toc_query: str) -> list | None:
     print(toc_query)
     print("")
 
@@ -137,7 +141,12 @@ def get_releases_by_toc(toc_string: str, lengths: list[int]) -> list | None:
         result = musicbrainzngs.get_releases_by_discid(
             id=None,
             toc=toc_query,
-            includes=["artists", "artist-credits", "recordings", "labels"],
+            includes=[
+                "artists",
+                "artist-credits",
+                "recordings",
+                "labels",
+            ],
         )
 
         # Step 5: Extract the release list
@@ -492,16 +501,18 @@ def create_parser():
 
 def main():
     args = create_parser().parse_args()
-
     option = extract_cdtoc()
     if not option:
         sys.exit(1)
-    cdtoc, cddb, lengths, discid = option
+    cdtoc, cddb, discid, lengths = option
 
     if args.toc:
         if args.toc != "EXTRACT":
-            cdtoc = args.toc
-        releases = get_releases_by_toc(cdtoc, lengths)
+            toc_query = args.toc
+        else:
+            toc_query = compute_toc_query(cdtoc, lengths)
+
+        releases = get_releases_by_toc(toc_query)
     else:
         releases = get_releases_by_discid(discid)
 
