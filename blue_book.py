@@ -402,7 +402,7 @@ def create_album(
 
     data = parse_riprip_cue(cue_path)
 
-    print(f"Converting {len(data.items())} files using {args.format.name}...")
+    print(f"Creating {len(data.items())} tracks using {args.format.name}...")
     for trk, info in data.items():
         # Extract files and sort them by index (00, then 01)
         # This ensures the Pre-gap is prepended to the Audio
