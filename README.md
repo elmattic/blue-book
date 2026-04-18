@@ -44,21 +44,21 @@ Generally, you can provide the barcode and country of the release to improve acc
 ```console
 uv run blue_book.py -b 077774620727 -c GB -f alac
 Scanning disc for CDTOC...
-1 12 194284 182 16990 22032 35915 48827 64632 82890 93060 130592 146982 162240 188795
+_x9EnejDHvr47DLFgUjhb1csg2s-
 
 Field                | Value
 ------------------------------------------------------------
-Release ID           | 38723ee2-aaac-4fdd-a566-3da5e5e2c575
-Album Title          | A Night at the Opera
+Release ID           | a507cd36-efe5-44fc-a72d-136374cbe88d
+Album                | A Night at the Opera
 Artist               | Queen
-Country              | GB
-Date                 | 1987
+Date                 | 1975
 Status               | Official
-Quality              | normal
-Barcode              | 077774620727
-Format               | Jewel Case
+Format               | CD (Jewel Case)
 Label                | EMI
 Catalog#             | CDP 7 46207 2
+Barcode              | 077774620727
+Country              | GB
+Released             | 1986-12-01
 
 Tracklist:
 ------------------------------------------------------------
@@ -160,7 +160,7 @@ The fruits of your labor:
 * HTOA tracks cannot be verified w/ AccurateRip or CTDB,
   but this rip rates likely, which is the next best thing!
 
-Converting 12 files using ALAC...
+Creating 12 tracks using ALAC...
 size=   23731KiB time=00:03:44.53 bitrate= 865.8kbits/s speed= 417x    
 size=    6573KiB time=00:01:07.22 bitrate= 800.9kbits/s speed= 413x    
 size=   21631KiB time=00:03:05.10 bitrate= 957.3kbits/s speed= 430x    
