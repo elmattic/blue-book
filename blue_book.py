@@ -106,6 +106,7 @@ def get_releases_by_discid(id: str) -> list | None:
                 "artist-credits",
                 "recordings",
                 "labels",
+                "release-groups",
             ],
         )
         releases = result.get("disc", {}).get("release-list", [])
@@ -165,8 +166,6 @@ def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
     if not releases:
         return None
 
-    country = args.country.upper() if args.country else None
-
     filtered = [
         r
         for r in releases
@@ -180,14 +179,20 @@ def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
                 else args.barcode in r.get("barcode")
             )
         )
-        and (country is None or r.get("country") == country)
+        and (args.country is None or args.country == r.get("country"))
         and (args.date is None or args.date in r.get("date"))
     ]
 
     return filtered
 
 
-def print_release_table(releases: list) -> None:
+def bold_substring(text, sub):
+    if not sub:
+        return text
+    return text.replace(sub, f"\033[1m{sub}\033[0m")
+
+
+def print_release_table(releases: list, args: argparse.Namespace) -> None:
     release = releases[-1]
 
     # Get Artist (checking the phrase first, then the list)
@@ -205,11 +210,20 @@ def print_release_table(releases: list) -> None:
         ("Release ID", release.get("id")),
         ("Album Title", release.get("title")),
         ("Artist", artist_name),
-        ("Country", release.get("country")),
-        ("Date", release.get("date")),
+        (
+            "Country",
+            bold_substring(release.get("country"), args.country),
+        ),
+        (
+            "Date",
+            bold_substring(release.get("date"), args.date),
+        ),
         ("Status", release.get("status")),
         ("Quality", release.get("quality")),
-        ("Barcode", release.get("barcode")),
+        (
+            "Barcode",
+            bold_substring(release.get("barcode"), args.barcode),
+        ),
         ("Format", release.get("packaging")),
         (
             "Label",
@@ -463,6 +477,10 @@ def rip_and_encode(
 
 
 def create_parser():
+    def normalize_barcode(value: str) -> str:
+        """Removes hyphens and spaces from the input string."""
+        return value.replace("-", "").replace(" ", "").strip()
+
     parser = argparse.ArgumentParser(
         description="Bit-perfect audio extraction and archival for CDs.",
     )
@@ -475,13 +493,13 @@ def create_parser():
     parser.add_argument(
         "-b",
         "--barcode",
-        type=str,
-        help="filter release by barcode (e.g., 689230001720)",
+        type=normalize_barcode,
+        help="filter release by barcode (e.g., 689230001720, 0-77774-62072-7)",
     )
     parser.add_argument(
         "-c",
         "--country",
-        type=str,
+        type=str.upper,
         help="filter release by country code (e.g., US, GB)",
     )
     parser.add_argument(
@@ -545,7 +563,7 @@ def main():
                 f"Warning: Found {len(releases)} matching releases, using the last one.\n"
             )
         if releases:
-            print_release_table(releases)
+            print_release_table(releases, args)
             print_tracks(releases)
             print("")
         else:
