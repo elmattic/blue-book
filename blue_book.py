@@ -186,14 +186,20 @@ def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
     return filtered
 
 
-def bold_substring(text, sub):
-    if not sub:
+def bold_substring(text, sub, verbose):
+    if verbose:
+        if not sub:
+            return text
+        return text.replace(sub, f"\033[1m{sub}\033[0m")
+    else:
         return text
-    return text.replace(sub, f"\033[1m{sub}\033[0m")
 
 
 def print_release_table(releases: list, args: argparse.Namespace) -> None:
     release = releases[-1]
+
+    release_group = release.get("release-group", {})
+    original_date = release_group.get("first-release-date")
 
     # Get Artist (checking the phrase first, then the list)
     artist_name = release.get("artist-credit-phrase")
@@ -203,28 +209,22 @@ def print_release_table(releases: list, args: argparse.Namespace) -> None:
             [c["artist"]["name"] for c in release["artist-credit"] if "artist" in c]
         )
 
+    format = release["medium-list"][0]["format"]
+    packaging = release.get("packaging")
     label_info = release.get("label-info-list", [{}])[0]
 
     # We'll create a list of fields we want to display
     fields = [
         ("Release ID", release.get("id")),
-        ("Album Title", release.get("title")),
+        ("Album", release.get("title")),
         ("Artist", artist_name),
         (
-            "Country",
-            bold_substring(release.get("country"), args.country),
-        ),
-        (
             "Date",
-            bold_substring(release.get("date"), args.date),
+            original_date and original_date[:4],
         ),
         ("Status", release.get("status")),
-        ("Quality", release.get("quality")),
-        (
-            "Barcode",
-            bold_substring(release.get("barcode"), args.barcode),
-        ),
-        ("Format", release.get("packaging")),
+        # ("Quality", release.get("quality")),
+        ("Format", f"{format} ({packaging})"),
         (
             "Label",
             label_info.get("label", {}).get("name"),
@@ -232,6 +232,18 @@ def print_release_table(releases: list, args: argparse.Namespace) -> None:
         (
             "Catalog#",
             label_info.get("catalog-number"),
+        ),
+        (
+            "Barcode",
+            bold_substring(release.get("barcode"), args.barcode, args.verbose),
+        ),
+        (
+            "Country",
+            bold_substring(release.get("country"), args.country, args.verbose),
+        ),
+        (
+            "Released",
+            bold_substring(release.get("date"), args.date, args.verbose),
         ),
     ]
 
@@ -557,7 +569,7 @@ def main():
         releases = find_best_release(releases, args)
         if args.verbose:
             print("---")
-            pprint.pprint(releases, indent=2, width=40, depth=4)
+            pprint.pprint(releases, indent=2, width=40, depth=3)
         if len(releases) > 1:
             print(
                 f"Warning: Found {len(releases)} matching releases, using the last one.\n"
