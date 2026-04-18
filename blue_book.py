@@ -195,11 +195,14 @@ def bold_substring(text, sub, verbose):
         return text
 
 
-def print_release_table(releases: list, args: argparse.Namespace) -> None:
-    release = releases[-1]
-
+def original_date(release) -> str | None:
     release_group = release.get("release-group", {})
     original_date = release_group.get("first-release-date")
+    return original_date and original_date[:4]
+
+
+def print_release_table(releases: list, args: argparse.Namespace) -> None:
+    release = releases[-1]
 
     # Get Artist (checking the phrase first, then the list)
     artist_name = release.get("artist-credit-phrase")
@@ -220,7 +223,7 @@ def print_release_table(releases: list, args: argparse.Namespace) -> None:
         ("Artist", artist_name),
         (
             "Date",
-            original_date and original_date[:4],
+            original_date(release),
         ),
         ("Status", release.get("status")),
         # ("Quality", release.get("quality")),
@@ -297,7 +300,7 @@ def get_metadata(release: dict) -> dict:
     artist_name = release.get("artist-credit-phrase")
     album_title = release.get("title")
     release_date = release.get("date")
-    year = release_date[:4] if release_date else None
+    year = original_date(release)
 
     tracks = {}
 
