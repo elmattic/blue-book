@@ -34,7 +34,7 @@ This project uses **PEP 723** inline metadata. We recommend using [uv](https://g
 Insert a CD and run:
 
 ```bash
-uv run blue_book.py
+uv run blue_book.py --skip
 ```
 
 Feel free to experiment with different flags, but you’ll typically want to run a dry run first using `--skip`. This allows you to finalize your tags (fetched on [MusicBrainz](https://musicbrainz.org/)) before starting the rip.
@@ -51,6 +51,7 @@ Field                | Value
 Release ID           | a507cd36-efe5-44fc-a72d-136374cbe88d
 Album                | A Night at the Opera
 Artist               | Queen
+Genre                | Hard Rock
 Date                 | 1975
 Status               | Official
 Format               | CD (Jewel Case)
