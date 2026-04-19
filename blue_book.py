@@ -201,6 +201,27 @@ def original_date(release) -> str | None:
     return original_date and original_date[:4]
 
 
+def get_genre(release) -> str | None:
+    release_group = release.get("release-group", {})
+    rg_id = release_group.get("id")
+
+    if rg_id is None:
+        return None
+
+    rg_data = musicbrainzngs.get_release_group_by_id(id=rg_id, includes=["tags"])
+
+    # MusicBrainz returns a 'tag-list' which includes genres
+    tags = rg_data.get("release-group", {}).get("tag-list", [])
+
+    if not tags:
+        return None
+
+    # Sort by the 'count' (upvotes)
+    sorted_tags = sorted(tags, key=lambda x: int(x["count"]), reverse=True)
+
+    return sorted_tags[0]["name"]
+
+
 def print_release_table(releases: list, args: argparse.Namespace) -> None:
     release = releases[-1]
 
@@ -212,6 +233,7 @@ def print_release_table(releases: list, args: argparse.Namespace) -> None:
             [c["artist"]["name"] for c in release["artist-credit"] if "artist" in c]
         )
 
+    genre = get_genre(release)
     format = release["medium-list"][0]["format"]
     packaging = release.get("packaging")
     label_info = release.get("label-info-list", [{}])[0]
@@ -225,6 +247,7 @@ def print_release_table(releases: list, args: argparse.Namespace) -> None:
             "Date",
             original_date(release),
         ),
+        ("Genre", genre and genre.title()),
         ("Status", release.get("status")),
         # ("Quality", release.get("quality")),
         ("Format", f"{format} ({packaging})"),
