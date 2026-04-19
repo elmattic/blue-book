@@ -288,8 +288,13 @@ def print_tracks(releases: list) -> None:
     print("\nTracklist:")
     print("-" * 60)
 
+    mediums = release.get("medium-list", [])
+    mediums_len = len(mediums)
+
     # Loop through the media and the tracks within them
-    for medium in release.get("medium-list", []):
+    for i, medium in enumerate(mediums):
+        if mediums_len > 1:
+            print(f"Disc {i + 1}:")
         for track in medium.get("track-list", []):
             # 1. Basic Info
             num = track.get("number")
@@ -314,6 +319,9 @@ def print_tracks(releases: list) -> None:
                 track_line += f" ({duration})"
 
             print(track_line)
+
+        if mediums_len > 1 and i == 0:
+            print("")
 
 
 def get_metadata(release: dict) -> dict:
