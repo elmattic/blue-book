@@ -524,6 +524,10 @@ def create_track(
         f"track={track_info['tracknumber']}",
         "-metadata",
         f"totaltracks={track_info['tracktotal']}",
+        "-metadata",
+        f"disc={track_info['discnumber']}",
+        "-metadata",
+        f"disctotal={track_info['disctotal']}",
         str(file_out),
         "-y",
     ]
