@@ -28,7 +28,7 @@ RIPRIP_PATH = Path("_riprip")
 
 # A two-level hierarchy: Artist/Album/Tracknum - Title.Suffix
 DIR_TEMPLATE = "{artist}/{album}"
-FILE_TEMPLATE = "{tracknum:02d} - {title}.{suffix}"
+FILE_TEMPLATE = "{tracknumber:02d} - {title}.{suffix}"
 
 # Identify our tool to MusicBrainz
 musicbrainzngs.set_useragent(
@@ -90,7 +90,7 @@ class FlacConfig:
 @dataclass
 class TemplateConfig:
     dir: str = "{artist}/{album}"
-    file: str = "{tracknum:02d} - {title}.{suffix}"
+    file: str = "{tracknumber:02d} - {title}.{suffix}"
 
 
 @dataclass
@@ -444,12 +444,16 @@ def get_album_path(root: Path, meta: dict, template: str) -> Path:
     return root / template.format(**context)
 
 
-def get_track_path(album_dir: Path, info: dict, suffix: str, template: str) -> Path:
+def get_track_path(
+    album_dir: Path, meta: dict, track_meta: dict, suffix: str, template: str
+) -> Path:
     """Uses the existing track 'info' dict to create the filename."""
     context = {
-        "tracknum": int(info.get("tracknumber")),
-        "title": sanitize(info.get("title")),
-        "artist": sanitize(info.get("artist")),
+        "discnumber": int(meta.get("discnumber")),
+        "disctotal": int(meta.get("disctotal")),
+        "tracknumber": int(track_meta.get("tracknumber")),
+        "title": sanitize(track_meta.get("title")),
+        "artist": sanitize(track_meta.get("artist")),
         "suffix": suffix,
     }
     return album_dir / (template.format(**context))
@@ -553,8 +557,10 @@ def create_album(cue_path: Path, meta: dict, album_path: Path, config: Config) -
         sorted_segments = sorted(info, key=lambda x: x["index"])
         wav_paths = [RIPRIP_PATH / item["file"] for item in sorted_segments]
 
-        info = meta.get("tracks")[int(trk)]
-        file_out = get_track_path(album_path, info, encode.format.suffix, template.file)
+        track_meta = meta.get("tracks")[int(trk)]
+        file_out = get_track_path(
+            album_path, meta, track_meta, encode.format.suffix, template.file
+        )
 
         create_track(wav_paths, file_out, info, config)
 
