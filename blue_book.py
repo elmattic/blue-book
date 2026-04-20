@@ -12,6 +12,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
+from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path
 
@@ -56,6 +58,48 @@ class AudioFormat(Enum):
     @property
     def suffix(self):
         return self.value[1]
+
+
+@dataclass
+class FilterConfig:
+    barcode: str | None = None
+    country: str | None = None
+    date: str | None = None
+
+
+@dataclass
+class RipConfig:
+    skip: bool = False
+    passes: int = 5
+
+
+@dataclass
+class EncodeConfig:
+    format: AudioFormat = AudioFormat.FLAC
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(format=AudioFormat.from_str(str(data.get("format"))))
+
+
+@dataclass
+class FlacConfig:
+    compression_level: int = 8
+
+
+@dataclass
+class TemplateConfig:
+    dir: str = "{artist}/{album}"
+    file: str = "{tracknum:02d} - {title}.{suffix}"
+
+
+@dataclass
+class Config:
+    filter: FilterConfig = field(default_factory=FilterConfig)
+    rip: RipConfig = field(default_factory=RipConfig)
+    encode: EncodeConfig = field(default_factory=EncodeConfig)
+    flac: FlacConfig = field(default_factory=FlacConfig)
+    template: TemplateConfig = field(default_factory=TemplateConfig)
 
 
 def extract_cdtoc() -> tuple[str, str, str, list[int]] | None:
@@ -162,9 +206,11 @@ def get_releases_by_toc(toc_query: str) -> list | None:
         return None
 
 
-def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
+def find_best_release(releases: list, config: Config) -> dict | None:
     if not releases:
         return None
+
+    args = config.filter
 
     filtered = [
         r
@@ -180,7 +226,7 @@ def find_best_release(releases: list, args: argparse.Namespace) -> dict | None:
             )
         )
         and (args.country is None or args.country == r.get("country"))
-        and (args.date is None or args.date in r.get("date"))
+        and (args.date is None or args.date in r.get("date", ""))
     ]
 
     return filtered
@@ -222,8 +268,10 @@ def get_genre(release) -> str | None:
     return sorted_tags[0]["name"]
 
 
-def print_release_table(releases: list, args: argparse.Namespace) -> None:
+def print_release_table(releases: list, config: Config) -> None:
     release = releases[-1]
+
+    args = config.filter
 
     # Get Artist (checking the phrase first, then the list)
     artist_name = release.get("artist-credit-phrase")
@@ -261,22 +309,22 @@ def print_release_table(releases: list, args: argparse.Namespace) -> None:
         ),
         (
             "Barcode",
-            bold_substring(release.get("barcode"), args.barcode, args.verbose),
+            bold_substring(release.get("barcode"), args.barcode, config.verbose),
         ),
         (
             "Country",
-            bold_substring(release.get("country"), args.country, args.verbose),
+            bold_substring(release.get("country"), args.country, config.verbose),
         ),
         (
             "Released",
-            bold_substring(release.get("date"), args.date, args.verbose),
+            bold_substring(release.get("date"), args.date, config.verbose),
         ),
     ]
 
     print(f"{'Field':<20} | {'Value'}")
     print("-" * 60)
-    for field, value in fields:
-        print(f"{field:<20} | {value or 'N/A'}")
+    for f, v in fields:
+        print(f"{f} | {v or 'N/A'}")
 
 
 def print_tracks(releases: list) -> None:
@@ -418,11 +466,14 @@ def parse_riprip_cue(cue_path: Path) -> dict:
 
 
 def create_track(
-    wav_files: list[Path], file_out: Path, track_info: dict, args: argparse.Namespace
+    wav_files: list[Path], file_out: Path, track_info: dict, config: Config
 ):
     """
-    Merges one or more WAVs into a single FLAC and applies tags.
+    Merges one or more WAVs into a single file and applies tags.
     """
+
+    encode = config.encode
+
     if len(wav_files) > 1:
         # Create a temporary file for the concat instructions
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -437,19 +488,19 @@ def create_track(
         ffmpeg_input = ["-i", str(wav_files[0])]
 
     cmd = ["ffmpeg", "-hide_banner"]
-    if args.verbose:
+    if config.verbose:
         cmd += ["-loglevel", "info"]
     else:
         cmd += ["-loglevel", "error", "-stats"]
     cmd += ffmpeg_input
 
     # Codec-specific flags
-    if args.format == AudioFormat.FLAC:
-        cmd += ["-compression_level", "8"]
+    if encode.format == AudioFormat.FLAC:
+        cmd += ["-compression_level", config.flac.compression_level]
 
     cmd += [
         "-c:a",
-        args.format.codec,
+        encode.format.codec,
         "-metadata",
         f"title={track_info['title']}",
         "-metadata",
@@ -474,13 +525,13 @@ def create_track(
             os.remove(concat_file)
 
 
-def create_album(
-    cue_path: Path, meta: dict, album_path: Path, args: argparse.Namespace
-) -> None:
+def create_album(cue_path: Path, meta: dict, album_path: Path, config: Config) -> None:
+    encode = config.encode
+    template = config.template
 
     data = parse_riprip_cue(cue_path)
 
-    print(f"Creating {len(data.items())} tracks using {args.format.name}...")
+    print(f"Creating {len(data.items())} tracks using {encode.format.name}...")
     for trk, info in data.items():
         # Extract files and sort them by index (00, then 01)
         # This ensures the Pre-gap is prepended to the Audio
@@ -488,15 +539,16 @@ def create_album(
         wav_paths = [RIPRIP_PATH / item["file"] for item in sorted_segments]
 
         info = meta.get("tracks")[int(trk)]
-        file_out = get_track_path(album_path, info, args.format.suffix, FILE_TEMPLATE)
+        file_out = get_track_path(album_path, info, encode.format.suffix, template.file)
 
-        create_track(wav_paths, file_out, info, args)
+        create_track(wav_paths, file_out, info, config)
 
 
-def rip_and_encode(
-    release: dict, passes: int, cddb: str, args: argparse.Namespace
-) -> None:
-    if not args.skip:
+def rip_and_encode(release: dict, cddb: str, config: Config) -> None:
+    passes = config.rip.passes
+    template = config.template
+
+    if not config.rip.skip:
         print(f"Starting ripping process with {passes} passes...")
         try:
             subprocess.run(
@@ -508,7 +560,7 @@ def rip_and_encode(
 
     meta = get_metadata(release)
 
-    album_path = get_album_path(DEFAULT_OUTPUT, meta, DIR_TEMPLATE)
+    album_path = get_album_path(DEFAULT_OUTPUT, meta, template.dir)
     album_path.mkdir(parents=True, exist_ok=True)
 
     cue_path = RIPRIP_PATH / f"{cddb}.cue"
@@ -517,7 +569,7 @@ def rip_and_encode(
         print("No cue file found in _riprip.")
         return
 
-    create_album(cue_path, meta, album_path, args)
+    create_album(cue_path, meta, album_path, config)
 
     print(f"\nSuccess! Files located in: {album_path}")
 
@@ -565,7 +617,7 @@ def create_parser():
         "--format",
         type=AudioFormat.from_str,
         choices=list(AudioFormat),
-        default=AudioFormat.FLAC,
+        # default=AudioFormat.FLAC,
         help="output audio format",
     )
     parser.add_argument(
@@ -579,16 +631,59 @@ def create_parser():
     return parser
 
 
-def main():
+def create_config():
+    base_config = asdict(Config())
+
     args = create_parser().parse_args()
+
+    toml_path = Path("config.toml")
+    toml_data = {}
+    if toml_path.exists():
+        with open(toml_path, "rb") as f:
+            toml_data = tomllib.load(f)
+
+    for section_name, fields in base_config.items():
+        if not isinstance(fields, dict):
+            continue
+
+        for key in fields:
+            cli_val = getattr(args, key, None)
+            toml_val = toml_data.get(section_name, {}).get(key)
+            if cli_val is not None:
+                # print(f"override: {section_name}.{key}={cli_val}")
+                base_config[section_name][key] = cli_val
+            elif toml_val is not None:
+                base_config[section_name][key] = toml_val
+
+    # Convert base_config back to the Config object
+    config = Config(
+        filter=FilterConfig(**base_config["filter"]),
+        rip=RipConfig(**base_config["rip"]),
+        encode=EncodeConfig.from_dict(base_config["encode"]),
+        flac=FlacConfig(**base_config["flac"]),
+        template=TemplateConfig(**base_config["template"]),
+    )
+
+    return config, args
+
+
+def main():
+    config, args = create_config()
+    config.verbose = args.verbose
+    config.toc = args.toc
+
+    # print("resolved:")
+    # pprint.pprint(config)
+    # print("")
+
     option = extract_cdtoc()
     if not option:
         sys.exit(1)
     cdtoc, cddb, discid, lengths = option
 
-    if args.toc:
-        if args.toc != "EXTRACT":
-            toc_query = args.toc
+    if config.toc:
+        if config.toc != "EXTRACT":
+            toc_query = config.toc
         else:
             toc_query = compute_toc_query(cdtoc, lengths)
 
@@ -596,12 +691,12 @@ def main():
     else:
         releases = get_releases_by_discid(discid)
 
-    if args.verbose:
+    if config.verbose:
         pprint.pprint(releases, indent=2, width=40, depth=2)
 
     if releases:
-        releases = find_best_release(releases, args)
-        if args.verbose:
+        releases = find_best_release(releases, config)
+        if config.verbose:
             print("---")
             pprint.pprint(releases, indent=2, width=40, depth=3)
         if len(releases) > 1:
@@ -609,14 +704,14 @@ def main():
                 f"Warning: Found {len(releases)} matching releases, using the last one.\n"
             )
         if releases:
-            print_release_table(releases, args)
+            print_release_table(releases, config)
             print_tracks(releases)
             print("")
         else:
             print("No releases matched your specific filters.")
             return
 
-        rip_and_encode(releases[-1], 5, cddb, args)
+        rip_and_encode(releases[-1], cddb, config)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
