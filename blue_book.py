@@ -26,10 +26,6 @@ DEFAULT_OUTPUT = Path.home() / ".blue-book"
 
 RIPRIP_PATH = Path("_riprip")
 
-# A two-level hierarchy: Artist/Album/Tracknum - Title.Suffix
-DIR_TEMPLATE = "{artist}/{album}"
-FILE_TEMPLATE = "{tracknumber:02d} - {title}.{suffix}"
-
 # Identify our tool to MusicBrainz
 musicbrainzngs.set_useragent(
     os.path.basename(__file__), __version__, "https://github.com/elmattic/blue-book"
