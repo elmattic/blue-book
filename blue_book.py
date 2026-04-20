@@ -324,7 +324,7 @@ def print_release_table(releases: list, config: Config) -> None:
     print(f"{'Field':<20} | {'Value'}")
     print("-" * 60)
     for f, v in fields:
-        print(f"{f} | {v or 'N/A'}")
+        print(f"{f:<20} | {v or 'N/A'}")
 
 
 def print_tracks(releases: list) -> None:
@@ -496,7 +496,7 @@ def create_track(
 
     # Codec-specific flags
     if encode.format == AudioFormat.FLAC:
-        cmd += ["-compression_level", config.flac.compression_level]
+        cmd += ["-compression_level", str(config.flac.compression_level)]
 
     cmd += [
         "-c:a",
