@@ -445,12 +445,12 @@ def get_album_path(root: Path, meta: dict, template: str) -> Path:
 
 
 def get_track_path(
-    album_dir: Path, meta: dict, track_meta: dict, suffix: str, template: str
+    album_dir: Path, track_meta: dict, suffix: str, template: str
 ) -> Path:
     """Uses the existing track 'info' dict to create the filename."""
     context = {
-        "discnumber": int(meta.get("discnumber")),
-        "disctotal": int(meta.get("disctotal")),
+        "discnumber": int(track_meta.get("discnumber")),
+        "disctotal": int(track_meta.get("disctotal")),
         "tracknumber": int(track_meta.get("tracknumber")),
         "title": sanitize(track_meta.get("title")),
         "artist": sanitize(track_meta.get("artist")),
@@ -559,10 +559,10 @@ def create_album(cue_path: Path, meta: dict, album_path: Path, config: Config) -
 
         track_meta = meta.get("tracks")[int(trk)]
         file_out = get_track_path(
-            album_path, meta, track_meta, encode.format.suffix, template.file
+            album_path, track_meta, encode.format.suffix, template.file
         )
 
-        create_track(wav_paths, file_out, info, config)
+        create_track(wav_paths, file_out, track_meta, config)
 
 
 def rip_and_encode(release: dict, cddb: str, discid: str, config: Config) -> None:
