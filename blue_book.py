@@ -327,7 +327,17 @@ def print_release_table(releases: list, config: Config) -> None:
         print(f"{f:<20} | {v or 'N/A'}")
 
 
-def print_tracks(releases: list) -> None:
+def has_disc_id(medium, disc_id) -> bool:
+    disc_list = medium.get("disc-list", [])
+
+    for disc in disc_list:
+        if disc.get("id") == disc_id:
+            return True
+
+    return False
+
+
+def print_tracks(releases: list, discid: str) -> None:
     release = releases[-1]
 
     # The 'artist-credit-phrase' at the release level for comparison
@@ -341,8 +351,9 @@ def print_tracks(releases: list) -> None:
 
     # Loop through the media and the tracks within them
     for i, medium in enumerate(mediums):
-        if mediums_len > 1:
-            print(f"Disc {i + 1}:")
+        if not has_disc_id(medium, discid):
+            continue
+
         for track in medium.get("track-list", []):
             # 1. Basic Info
             num = track.get("number")
@@ -368,11 +379,8 @@ def print_tracks(releases: list) -> None:
 
             print(track_line)
 
-        if mediums_len > 1 and i == 0:
-            print("")
 
-
-def get_metadata(release: dict) -> dict:
+def get_metadata(release: dict, discid: str) -> dict:
     """
     Extracts high-level metadata and a list of tracks for tagging.
     """
@@ -385,6 +393,9 @@ def get_metadata(release: dict) -> dict:
 
     # Iterate through mediums (CD1, CD2, etc.)
     for medium in release.get("medium-list"):
+        if not has_disc_id(medium, discid):
+            continue
+
         for track in medium.get("track-list"):
             # Fallback for track titles
             title = track.get("title") or track.get("recording", {}).get("title")
@@ -544,7 +555,7 @@ def create_album(cue_path: Path, meta: dict, album_path: Path, config: Config) -
         create_track(wav_paths, file_out, info, config)
 
 
-def rip_and_encode(release: dict, cddb: str, config: Config) -> None:
+def rip_and_encode(release: dict, cddb: str, discid: str, config: Config) -> None:
     passes = config.rip.passes
     template = config.template
 
@@ -558,7 +569,7 @@ def rip_and_encode(release: dict, cddb: str, config: Config) -> None:
             print(f"Error ripping disc: {e}")
             return
 
-    meta = get_metadata(release)
+    meta = get_metadata(release, discid)
 
     album_path = get_album_path(DEFAULT_OUTPUT, meta, template.dir)
     album_path.mkdir(parents=True, exist_ok=True)
@@ -705,13 +716,13 @@ def main():
             )
         if releases:
             print_release_table(releases, config)
-            print_tracks(releases)
+            print_tracks(releases, discid)
             print("")
         else:
             print("No releases matched your specific filters.")
             return
 
-        rip_and_encode(releases[-1], cddb, config)
+        rip_and_encode(releases[-1], cddb, discid, config)
     else:
         print("Error: No releases found for this TOC.")
         sys.exit(1)
