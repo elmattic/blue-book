@@ -69,6 +69,14 @@ class RipConfig:
     passes: int = 5
     device: Path | None = None
 
+    @classmethod
+    def from_dict(cls, data: dict):
+        return cls(
+            skip=data.get("skip"),
+            passes=data.get("passes"),
+            device=Path(data.get("device")),
+        )
+
 
 @dataclass
 class EncodeConfig:
@@ -396,7 +404,7 @@ def get_metadata(release: dict, discid: str) -> dict:
 
             track_artist = track.get("artist-credit-phrase")
 
-            track = {
+            track_meta = {
                 "title": title,
                 "album": album_title,
                 "artist": track_artist,
@@ -409,7 +417,7 @@ def get_metadata(release: dict, discid: str) -> dict:
                 "discnumber": medium.get("position"),
                 "disctotal": len(release.get("medium-list")),
             }
-            tracks[int(track.get("number"))] = track
+            tracks[int(track.get("number"))] = track_meta
 
     return {
         "album_title": album_title,
@@ -677,7 +685,7 @@ def create_config():
     # Convert base_config back to the Config object
     config = Config(
         filter=FilterConfig(**base_config["filter"]),
-        rip=RipConfig(**base_config["rip"]),
+        rip=RipConfig.from_dict(base_config["rip"]),
         encode=EncodeConfig.from_dict(base_config["encode"]),
         flac=FlacConfig(**base_config["flac"]),
         template=TemplateConfig(**base_config["template"]),
