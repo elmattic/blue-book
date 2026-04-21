@@ -74,7 +74,7 @@ class RipConfig:
         return cls(
             skip=data.get("skip"),
             passes=data.get("passes"),
-            device=Path(data.get("device")),
+            device=data.get("device") and Path(data.get("device")),
         )
 
 
@@ -409,7 +409,7 @@ def get_metadata(release: dict, discid: str) -> dict:
                 "album": album_title,
                 "artist": track_artist,
                 "date": year,
-                "genre": genre,
+                "genre": genre and genre.title(),
                 "tracknumber": track.get("number"),
                 "albumartist": album_artist,
                 # Additions
