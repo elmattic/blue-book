@@ -100,7 +100,7 @@ class Config:
 
 def extract_cdtoc() -> tuple[str, str, str, list[int]] | None:
     """Runs riprip --no-rip and parses the CDTOC from the output."""
-    print("Scanning disc for CDTOC...")
+    print("Scanning disc for MusicBrainz...")
     try:
         result = subprocess.run(
             ["riprip", "--no-rip"], capture_output=True, text=True, check=True
@@ -121,7 +121,7 @@ def extract_cdtoc() -> tuple[str, str, str, list[int]] | None:
 
             return (cdtoc, cddb, discid, lengths)
 
-        print("Could not find CDTOC or CDDB in riprip output.")
+        print("Could not find CDTOC, CDDB or MusicBrainz in riprip output.")
         return None
 
     except FileNotFoundError:
@@ -342,11 +342,8 @@ def print_tracks(releases: list, discid: str) -> None:
     print("\nTracklist:")
     print("-" * 60)
 
-    mediums = release.get("medium-list", [])
-    mediums_len = len(mediums)
-
     # Loop through the media and the tracks within them
-    for i, medium in enumerate(mediums):
+    for medium in release.get("medium-list", []):
         if not has_disc_id(medium, discid):
             continue
 
@@ -380,9 +377,9 @@ def get_metadata(release: dict, discid: str) -> dict:
     """
     Extracts high-level metadata and a list of tracks for tagging.
     """
-    artist_name = release.get("artist-credit-phrase")
     album_title = release.get("title")
-    release_date = release.get("date")
+    album_artist = release.get("artist-credit-phrase")
+    genre = get_genre(release)
     year = original_date(release)
 
     tracks = {}
@@ -398,24 +395,24 @@ def get_metadata(release: dict, discid: str) -> dict:
 
             track_artist = track.get("artist-credit-phrase")
 
-            track_info = {
+            track = {
                 "title": title,
-                "artist": track_artist,
                 "album": album_title,
+                "artist": track_artist,
                 "date": year,
+                "genre": genre,
                 "tracknumber": track.get("number"),
-                # Genre?
-                "albumartist": artist_name,
+                "albumartist": album_artist,
                 # Additions
                 "tracktotal": len(medium.get("track-list")),
                 "discnumber": medium.get("position"),
                 "disctotal": len(release.get("medium-list")),
             }
-            tracks[int(track.get("number"))] = track_info
+            tracks[int(track.get("number"))] = track
 
     return {
         "album_title": album_title,
-        "artist": artist_name,
+        "artist": album_artist,
         "tracks": tracks,
     }
 
@@ -450,6 +447,7 @@ def get_track_path(
         "tracknumber": int(track_meta.get("tracknumber")),
         "title": sanitize(track_meta.get("title")),
         "artist": sanitize(track_meta.get("artist")),
+        "albumartist": sanitize(track_meta.get("albumartist")),
         "suffix": suffix,
     }
     return album_dir / (template.format(**context))

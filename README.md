@@ -188,6 +188,4 @@ Success! Files located in: /home/elmattic/.blue-book/Queen/A Night at the Opera
 
 - **Codec:** While the primary focus is on archival accuracy, the tool should eventually support lossy transcodes such as Ogg Vorbis, AAC, etc.
 
-- **Multi-disc:** Currently lacks native handling for multi-medium sets.
-
 - **Labels:** Lacks multi-label display.
