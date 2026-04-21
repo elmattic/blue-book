@@ -67,6 +67,7 @@ class FilterConfig:
 class RipConfig:
     skip: bool = False
     passes: int = 5
+    device: Path | None = None
 
 
 @dataclass
@@ -561,14 +562,17 @@ def create_album(cue_path: Path, meta: dict, album_path: Path, config: Config) -
 
 def rip_and_encode(release: dict, cddb: str, discid: str, config: Config) -> None:
     passes = config.rip.passes
+    device = config.rip.device
     template = config.template
 
     if not config.rip.skip:
         print(f"Starting ripping process with {passes} passes...")
         try:
-            subprocess.run(
-                ["riprip", "--passes", str(passes)], input="y\n", text=True, check=True
-            )
+            cmd = ["riprip", "--passes", str(passes)]
+            if device and device.exists():
+                cmd += ["--dev", str(device)]
+
+            subprocess.run(cmd, input="y\n", text=True, check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error ripping disc: {e}")
             return
