@@ -90,6 +90,7 @@ class EncodeConfig:
 @dataclass
 class FlacConfig:
     compression_level: int = 8
+    cue_sheet: bool = False
 
 
 @dataclass
@@ -562,12 +563,73 @@ def create_album(cue_path: Path, meta: dict, album_path: Path, config: Config) -
         sorted_segments = sorted(info, key=lambda x: x["index"])
         wav_paths = [RIPRIP_PATH / item["file"] for item in sorted_segments]
 
-        track_meta = meta.get("tracks")[int(trk)]
-        file_out = get_track_path(
-            album_path, track_meta, encode.format.suffix, template.file
-        )
+        if len(wav_paths) == 2:
+            track_meta = meta.get("tracks")[int(1)]
 
-        create_track(wav_paths, file_out, track_meta, config)
+            file_out = get_track_path(
+                album_path, track_meta, encode.format.suffix, template.file
+            )
+            create_track([wav_paths[1]], file_out, track_meta, config)
+
+            track_meta_copy = track_meta.copy()
+            track_meta_copy["title"] = "[hidden]"
+            track_meta_copy["tracknumber"] = str(int(track_meta.get("tracknumber")) - 1)
+
+            file_out = get_track_path(
+                album_path, track_meta_copy, encode.format.suffix, template.file
+            )
+            create_track([wav_paths[0]], file_out, track_meta_copy, config)
+
+        else:
+            track_meta = meta.get("tracks")[int(trk)]
+            file_out = get_track_path(
+                album_path, track_meta, encode.format.suffix, template.file
+            )
+
+            create_track(wav_paths, file_out, track_meta, config)
+
+
+def create_cue_sheet(cue_path: Path, album_path: Path, tracks: dict, config: Config):
+    encode = config.encode
+    template = config.template
+
+    with open(cue_path, "r") as f:
+        content = f.read()
+
+    lines = content.splitlines()
+    patched_lines = []
+
+    # Regex to capture the riprip filename pattern: "prefix__XX.wav"
+    # match.group(1) is the prefix, group(2) is the index/track number
+    file_pattern = re.compile(r'FILE "(.*?)__(\d+)\.wav" WAVE')
+
+    for line in lines:
+        match = file_pattern.search(line)
+        if match:
+            # riprip logic: __00 is Track 1 Index 0, __01 is Track 1 Index 1
+            # __02 is Track 2, etc.
+            original_num = int(match.group(2))
+
+            try:
+                file_out = get_track_path(
+                    Path(""),
+                    tracks[int(original_num)],
+                    encode.format.suffix,
+                    template.file,
+                )
+                new_line = f'FILE "{str(file_out)}" WAVE'
+            except KeyError:
+                # Some hidden track?
+                new_line = f'FILE "{original_num:02d} - [hidden].flac" WAVE'
+
+            patched_lines.append(new_line)
+        else:
+            patched_lines.append(line)
+
+    # Save the new album cue sheet
+    output_path = album_path / Path("album.cue")
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(patched_lines))
 
 
 def rip_and_encode(release: dict, cddb: str, discid: str, config: Config) -> None:
@@ -599,6 +661,9 @@ def rip_and_encode(release: dict, cddb: str, discid: str, config: Config) -> Non
         return
 
     create_album(cue_path, meta, album_path, config)
+
+    if config.flac.cue_sheet:
+        create_cue_sheet(cue_path, album_path, meta.get("tracks"), config)
 
     print(f"\nSuccess! Files located in: {album_path}")
 
