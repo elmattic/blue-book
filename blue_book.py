@@ -544,6 +544,9 @@ def create_track(
 
     try:
         subprocess.run(cmd, check=True)
+    except FileNotFoundError:
+        print("Error: 'ffmpeg' utility not found. Please install it.")
+        return
     finally:
         # Clean up the temp file if we made one
         if len(wav_files) > 1:
@@ -647,6 +650,9 @@ def rip_and_encode(release: dict, cddb: str, discid: str, config: Config) -> Non
             subprocess.run(cmd, input="y\n", text=True, check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error ripping disc: {e}")
+            return
+        except FileNotFoundError:
+            print("Error: 'riprip' utility not found. Please install it.")
             return
 
     meta = get_metadata(release, discid)
