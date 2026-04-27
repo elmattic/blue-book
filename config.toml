@@ -1,0 +1,16 @@
+[filter]
+# barcode = "0-77774-62072-7"
+# country = "XE"
+# date = "1986"
+
+[rip]
+
+[encode]
+
+[flac]
+compression_level = 8
+cue_sheet = true
+
+[template]
+# dir = "{artist}/{album}"
+# file = "{tracknum:02d} - {title}.{suffix}"
