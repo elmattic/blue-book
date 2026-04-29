@@ -305,13 +305,13 @@ async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::R
         ),
         ("Label", label_name),
         ("Catalog#", catalog_number),
+        ("Released", release.date.as_ref().map(|ds| ds.0.clone())),
     ];
 
     println!("{:<20} | {}", "Field", "Value");
     println!("{}", "-".repeat(60));
-
-    for (k, v) in fields {
-        println!("{:<20} | {}", k, v.unwrap_or(NA.into()));
+    for (f, v) in fields {
+        println!("{:<20} | {}", f, v.as_deref().unwrap_or(NA));
     }
 
     Ok(())
