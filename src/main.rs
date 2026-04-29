@@ -267,6 +267,17 @@ async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::R
         })
     });
 
+    let format = release
+        .media
+        .as_ref()
+        .and_then(|m| m.first())
+        .and_then(|medium| medium.format.clone());
+
+    let packaging = release
+        .packaging
+        .as_ref()
+        .map(|p| serde_plain::to_string(p).unwrap_or_default());
+
     const NA: &str = "N/A";
 
     let fields = vec![
@@ -282,6 +293,14 @@ async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::R
                 .clone()
                 .map(|s| format!("{:?}", s))
                 .unwrap_or(NA.into()),
+        ),
+        (
+            "Format",
+            format!(
+                "{} ({})",
+                format.unwrap_or(NA.into()),
+                packaging.unwrap_or(NA.into())
+            ),
         ),
     ];
 
