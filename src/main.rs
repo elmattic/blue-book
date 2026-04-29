@@ -305,6 +305,8 @@ async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::R
         ),
         ("Label", label_name),
         ("Catalog#", catalog_number),
+        ("Barcode", release.barcode.as_ref().cloned()),
+        ("Country", release.country.as_ref().cloned()),
         ("Released", release.date.as_ref().map(|ds| ds.0.clone())),
     ];
 
