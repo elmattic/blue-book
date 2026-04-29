@@ -171,7 +171,7 @@ fn find_best_release(config: &Config, releases: Vec<Release>) -> Vec<Release> {
                     if search.is_empty() {
                         barcode.is_empty()
                     } else {
-                        barcode.contains(search)
+                        barcode.contains(&search.replace("-", "").replace(" ", ""))
                     }
                 }
             };
@@ -278,37 +278,40 @@ async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::R
         .as_ref()
         .map(|p| serde_plain::to_string(p).unwrap_or_default());
 
+    let label_info = release.label_info.as_ref().and_then(|list| list.first());
+
+    let label_name = label_info
+        .and_then(|info| info.label.as_ref())
+        .map(|label| label.name.clone());
+
+    let catalog_number = label_info.and_then(|info| info.catalog_number.clone());
+
     const NA: &str = "N/A";
 
     let fields = vec![
-        ("Release ID", release.id.clone()),
-        ("Artist", artist_name.unwrap_or(NA.into())),
-        ("Album", release.title.clone()),
-        ("Date", original_date(release).unwrap_or(NA.into())),
-        ("Genre", get_genre(release).await?.unwrap_or(NA.into())),
-        (
-            "Status",
-            release
-                .status
-                .clone()
-                .map(|s| format!("{:?}", s))
-                .unwrap_or(NA.into()),
-        ),
+        ("Release ID", Some(release.id.clone())),
+        ("Artist", artist_name),
+        ("Album", Some(release.title.clone())),
+        ("Date", original_date(release)),
+        ("Genre", get_genre(release).await?),
+        ("Status", release.status.clone().map(|s| format!("{:?}", s))),
         (
             "Format",
-            format!(
+            Some(format!(
                 "{} ({})",
                 format.unwrap_or(NA.into()),
                 packaging.unwrap_or(NA.into())
-            ),
+            )),
         ),
+        ("Label", label_name),
+        ("Catalog#", catalog_number),
     ];
 
     println!("{:<20} | {}", "Field", "Value");
     println!("{}", "-".repeat(60));
 
     for (k, v) in fields {
-        println!("{:<20} | {}", k, v);
+        println!("{:<20} | {}", k, v.unwrap_or(NA.into()));
     }
 
     Ok(())
