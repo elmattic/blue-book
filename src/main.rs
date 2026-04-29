@@ -2,8 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use heck::ToTitleCase;
 use musicbrainz_rs::entity::discid::Discid;
 use musicbrainz_rs::entity::release::Release;
+use musicbrainz_rs::entity::release_group::ReleaseGroup;
 use musicbrainz_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -227,9 +229,30 @@ fn original_date(release: &Release) -> Option<String> {
         .map(String::from)
 }
 
-fn print_release_table(config: &Config, releases: &[Release]) {
+async fn get_genre(release: &Release) -> anyhow::Result<Option<String>> {
+    let Some(rg_ref) = &release.release_group else {
+        return Ok(None);
+    };
+    let rg_id = &rg_ref.id;
+
+    let rg_data = ReleaseGroup::fetch()
+        .id(rg_id)
+        .with_tags()
+        .execute_async()
+        .await
+        .with_context(|| format!("failed to fetch release group {rg_id}"))?;
+
+    let genre = rg_data.tags.and_then(|mut tags| {
+        tags.sort_by(|a, b| b.count.cmp(&a.count));
+        tags.first().map(|t| t.name.to_title_case())
+    });
+
+    Ok(genre)
+}
+
+async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::Result<()> {
     let Some(release) = releases.last() else {
-        return;
+        return Ok(());
     };
 
     let args = &config.filter;
@@ -251,6 +274,7 @@ fn print_release_table(config: &Config, releases: &[Release]) {
         ("Artist", artist_name.unwrap_or(NA.into())),
         ("Album", release.title.clone()),
         ("Date", original_date(release).unwrap_or(NA.into())),
+        ("Genre", get_genre(release).await?.unwrap_or(NA.into())),
     ];
 
     println!("{:<20} | {}", "Field", "Value");
@@ -259,6 +283,8 @@ fn print_release_table(config: &Config, releases: &[Release]) {
     for (k, v) in fields {
         println!("{:<20} | {}", k, v);
     }
+
+    Ok(())
 }
 
 async fn run(config: &Config) -> anyhow::Result<()> {
@@ -267,7 +293,7 @@ async fn run(config: &Config) -> anyhow::Result<()> {
 
     let releases = find_best_release(config, releases);
 
-    print_release_table(config, &releases);
+    print_release_table(config, &releases).await?;
 
     Ok(())
 }

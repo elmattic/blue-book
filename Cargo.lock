@@ -117,6 +117,7 @@ name = "blue-book"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "heck",
  "musicbrainz_rs",
  "serde",
  "tokio",
