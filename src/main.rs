@@ -275,6 +275,14 @@ async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::R
         ("Album", release.title.clone()),
         ("Date", original_date(release).unwrap_or(NA.into())),
         ("Genre", get_genre(release).await?.unwrap_or(NA.into())),
+        (
+            "Status",
+            release
+                .status
+                .clone()
+                .map(|s| format!("{:?}", s))
+                .unwrap_or(NA.into()),
+        ),
     ];
 
     println!("{:<20} | {}", "Field", "Value");
