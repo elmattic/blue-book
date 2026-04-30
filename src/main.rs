@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use heck::ToTitleCase;
+use musicbrainz_rs::entity::artist_credit::ArtistCredit;
 use musicbrainz_rs::entity::discid::Discid;
+use musicbrainz_rs::entity::release::Media;
 use musicbrainz_rs::entity::release::Release;
 use musicbrainz_rs::entity::release_group::ReleaseGroup;
 use musicbrainz_rs::prelude::*;
@@ -319,6 +321,87 @@ async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::R
     Ok(())
 }
 
+fn has_disc_id(media: &Media, disc_id: &str) -> bool {
+    media
+        .discs
+        .as_ref()
+        .map(|discs| discs.iter().any(|d| d.id == disc_id))
+        .unwrap_or(false)
+}
+
+fn artist_credit_phrase(artist_credits: &Option<Vec<ArtistCredit>>) -> String {
+    artist_credits
+        .as_ref()
+        .map(|credits| {
+            credits
+                .iter()
+                .map(|ac| {
+                    // Combine the artist name with their specific join phrase
+                    let name = &ac.artist.name;
+                    let join = ac.joinphrase.as_deref().unwrap_or("");
+                    format!("{}{}", name, join)
+                })
+                .collect::<String>()
+        })
+        .unwrap_or_default()
+}
+
+fn print_tracks(releases: &[Release], discid: &str) -> anyhow::Result<()> {
+    let release = releases.last().context("no releases found")?;
+
+    // The 'artist-credit-phrase' at the release level for comparison
+    let album_artist = &release.artist_credit;
+
+    println!("\nTracklist:");
+    println!("{}", "-".repeat(60));
+
+    let media = release.media.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+
+    // Loop through the media and the tracks within them
+    for medium in media {
+        if !has_disc_id(medium, discid) {
+            continue;
+        }
+
+        let tracks = medium.tracks.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+
+        for track in tracks {
+            // 1. Basic Info
+            let num = &track.number;
+            let recording = track.recording.as_ref().context("no recording")?;
+            let title = &recording.title;
+
+            // 2. Length (convert ms to MM:SS)
+            let length_ms = track.length.or(recording.length);
+            let duration = length_ms
+                .map(|ms| {
+                    let total_seconds = ms / 1000;
+                    let (minutes, seconds) = (total_seconds / 60, total_seconds % 60);
+                    format!("{minutes}:{seconds:02}")
+                })
+                .unwrap_or_default();
+
+            // 3. Guest Artists
+            let track_artist = &track.artist_credit;
+
+            // Printing with conditional formatting
+            let mut track_line = format!("{num:>2}. {title}");
+            // Only print featuring if it adds new information
+            if track_artist != album_artist {
+                let track_artist = artist_credit_phrase(&track_artist);
+                track_line.push_str(&format!(" - {track_artist}"));
+            }
+            if !duration.is_empty() {
+                track_line.push_str(&format!(" ({duration})"));
+            }
+
+            println!("{}", track_line);
+        }
+    }
+
+    Ok(())
+}
+
 async fn run(config: &Config) -> anyhow::Result<()> {
     let mbid = "dlsh_eduZC8L7ghh6El2uFAkC88-";
     let releases = get_releases_by_discid(mbid).await?;
@@ -326,6 +409,7 @@ async fn run(config: &Config) -> anyhow::Result<()> {
     let releases = find_best_release(config, releases);
 
     print_release_table(config, &releases).await?;
+    print_tracks(&releases, mbid)?;
 
     Ok(())
 }
