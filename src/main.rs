@@ -210,16 +210,6 @@ fn bold_substring(text: &str, sub: Option<&str>, verbose: bool) -> String {
     text.replace(sub, &format!("\x1b[1m{}\x1b[0m", sub))
 }
 
-fn get_artist_name(release: &Release) -> Option<String> {
-    let credits = release.artist_credit.as_ref()?;
-
-    Some(credits.iter().fold(String::new(), |mut acc, c| {
-        acc.push_str(&c.artist.name);
-        acc.push_str(c.joinphrase.as_deref().unwrap_or(""));
-        acc
-    }))
-}
-
 fn original_date(release: &Release) -> Option<String> {
     release
         .release_group
@@ -259,15 +249,7 @@ async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::R
 
     let args = &config.filter;
 
-    let artist_name = get_artist_name(release).or_else(|| {
-        release.artist_credit.as_ref().map(|credits| {
-            credits
-                .iter()
-                .filter_map(|c| Some(c.artist.name.clone()))
-                .collect::<Vec<_>>()
-                .join("")
-        })
-    });
+    let artist_name = artist_credit_phrase(&release.artist_credit);
 
     let format = release
         .media
@@ -329,21 +311,18 @@ fn has_disc_id(media: &Media, disc_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn artist_credit_phrase(artist_credits: &Option<Vec<ArtistCredit>>) -> String {
-    artist_credits
-        .as_ref()
-        .map(|credits| {
-            credits
-                .iter()
-                .map(|ac| {
-                    // Combine the artist name with their specific join phrase
-                    let name = &ac.artist.name;
-                    let join = ac.joinphrase.as_deref().unwrap_or("");
-                    format!("{}{}", name, join)
-                })
-                .collect::<String>()
-        })
-        .unwrap_or_default()
+fn artist_credit_phrase(artist_credits: &Option<Vec<ArtistCredit>>) -> Option<String> {
+    artist_credits.as_ref().map(|credits| {
+        credits
+            .iter()
+            .map(|ac| {
+                // Combine the artist name with their specific join phrase
+                let name = &ac.artist.name;
+                let join = ac.joinphrase.as_deref().unwrap_or("");
+                format!("{}{}", name, join)
+            })
+            .collect::<String>()
+    })
 }
 
 fn print_tracks(releases: &[Release], discid: &str) -> anyhow::Result<()> {
@@ -388,8 +367,9 @@ fn print_tracks(releases: &[Release], discid: &str) -> anyhow::Result<()> {
             let mut track_line = format!("{num:>2}. {title}");
             // Only print featuring if it adds new information
             if track_artist != album_artist {
-                let track_artist = artist_credit_phrase(&track_artist);
-                track_line.push_str(&format!(" - {track_artist}"));
+                if let Some(track_artist) = artist_credit_phrase(&track_artist) {
+                    track_line.push_str(&format!(" - {track_artist}"));
+                }
             }
             if !duration.is_empty() {
                 track_line.push_str(&format!(" ({duration})"));
