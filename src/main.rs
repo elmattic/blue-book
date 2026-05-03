@@ -389,6 +389,26 @@ enum MetaData {
     Value(String),
 }
 
+impl MetaData {
+    pub fn new_map() -> Self {
+        MetaData::Map(BTreeMap::new())
+    }
+
+    pub fn with_value(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        if let MetaData::Map(ref mut map) = self {
+            map.insert(key.into(), MetaData::Value(value.into()));
+        }
+        self
+    }
+
+    pub fn with_map(mut self, key: impl Into<String>, other: BTreeMap<String, MetaData>) -> Self {
+        if let MetaData::Map(ref mut map) = self {
+            map.insert(key.into(), MetaData::Map(other));
+        }
+        self
+    }
+}
+
 /// Extracts high-level metadata and a list of tracks for tagging.
 async fn get_metadata(release: &Release, discid: &str) -> anyhow::Result<MetaData> {
     let album_title = release.title.clone();
@@ -397,8 +417,6 @@ async fn get_metadata(release: &Release, discid: &str) -> anyhow::Result<MetaDat
     let year = original_date(release).context("no original date")?;
 
     let mut tracks = BTreeMap::new();
-
-    // Iterate through mediums (CD1, CD2, etc.)
     let media = release.media.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
     for medium in media {
         if !has_disc_id(medium, discid) {
@@ -406,39 +424,35 @@ async fn get_metadata(release: &Release, discid: &str) -> anyhow::Result<MetaDat
         }
 
         let track_list = medium.tracks.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+        let track_total = track_list.len().to_string();
+        let disc_number = medium.position.unwrap_or(1).to_string();
+        let disc_total = media.len().to_string();
+
         for track in track_list {
             let track_artist =
                 artist_credit_phrase(&track.artist_credit).context("no artist credit")?;
 
-            let mut track_meta = BTreeMap::new();
-            track_meta.insert("title".into(), MetaData::Value(track.title.clone()));
-            track_meta.insert("album".into(), MetaData::Value(album_title.clone()));
-            track_meta.insert("artist".into(), MetaData::Value(track_artist.clone()));
-            track_meta.insert("date".into(), MetaData::Value(year.clone()));
-            track_meta.insert("genre".into(), MetaData::Value(genre.clone()));
-            track_meta.insert("tracknumber".into(), MetaData::Value(track.number.clone()));
-            track_meta.insert("albumartist".into(), MetaData::Value(album_artist.clone()));
-            // Additions
-            track_meta.insert(
-                "tracktotal".into(),
-                MetaData::Value(track_list.len().to_string()),
-            );
-            track_meta.insert(
-                "discnumber".into(),
-                MetaData::Value(medium.position.unwrap_or(1).to_string()),
-            );
-            track_meta.insert("disctotal".into(), MetaData::Value(media.len().to_string()));
+            let track_meta = MetaData::new_map()
+                .with_value("title", track.title.clone())
+                .with_value("album", album_title.clone())
+                .with_value("artist", track_artist)
+                .with_value("date", year.clone())
+                .with_value("genre", genre.clone())
+                .with_value("tracknumber", track.number.clone())
+                .with_value("albumartist", album_artist.clone())
+                // Additions
+                .with_value("tracktotal", track_total.clone())
+                .with_value("discnumber", disc_number.clone())
+                .with_value("disctotal", disc_total.clone());
 
-            tracks.insert(track.number.clone(), MetaData::Map(track_meta));
+            tracks.insert(track.number.clone(), track_meta);
         }
     }
 
-    let mut album = BTreeMap::new();
-    album.insert("albumtitle".into(), MetaData::Value(album_title));
-    album.insert("artist".into(), MetaData::Value(album_artist));
-    album.insert("tracks".into(), MetaData::Map(tracks));
-
-    Ok(MetaData::Map(album))
+    Ok(MetaData::new_map()
+        .with_value("albumtitle", album_title)
+        .with_value("artist", album_artist)
+        .with_map("tracks", tracks))
 }
 
 async fn run(config: &Config) -> anyhow::Result<()> {
