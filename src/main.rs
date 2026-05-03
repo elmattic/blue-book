@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -382,6 +383,64 @@ fn print_tracks(releases: &[Release], discid: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+enum MetaData {
+    Map(BTreeMap<String, MetaData>),
+    Value(String),
+}
+
+/// Extracts high-level metadata and a list of tracks for tagging.
+async fn get_metadata(release: &Release, discid: &str) -> anyhow::Result<MetaData> {
+    let album_title = release.title.clone();
+    let album_artist = artist_credit_phrase(&release.artist_credit).context("no artist credit")?;
+    let genre = get_genre(release).await?.context("no genre")?;
+    let year = original_date(release).context("no original date")?;
+
+    let mut tracks = BTreeMap::new();
+
+    // Iterate through mediums (CD1, CD2, etc.)
+    let media = release.media.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+    for medium in media {
+        if !has_disc_id(medium, discid) {
+            continue;
+        }
+
+        let track_list = medium.tracks.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+        for track in track_list {
+            let track_artist =
+                artist_credit_phrase(&track.artist_credit).context("no artist credit")?;
+
+            let mut track_meta = BTreeMap::new();
+            track_meta.insert("title".into(), MetaData::Value(track.title.clone()));
+            track_meta.insert("album".into(), MetaData::Value(album_title.clone()));
+            track_meta.insert("artist".into(), MetaData::Value(track_artist.clone()));
+            track_meta.insert("date".into(), MetaData::Value(year.clone()));
+            track_meta.insert("genre".into(), MetaData::Value(genre.clone()));
+            track_meta.insert("tracknumber".into(), MetaData::Value(track.number.clone()));
+            track_meta.insert("albumartist".into(), MetaData::Value(album_artist.clone()));
+            // Additions
+            track_meta.insert(
+                "tracktotal".into(),
+                MetaData::Value(track_list.len().to_string()),
+            );
+            track_meta.insert(
+                "discnumber".into(),
+                MetaData::Value(medium.position.unwrap_or(1).to_string()),
+            );
+            track_meta.insert("disctotal".into(), MetaData::Value(media.len().to_string()));
+
+            tracks.insert(track.number.clone(), MetaData::Map(track_meta));
+        }
+    }
+
+    let mut album = BTreeMap::new();
+    album.insert("albumtitle".into(), MetaData::Value(album_title));
+    album.insert("artist".into(), MetaData::Value(album_artist));
+    album.insert("tracks".into(), MetaData::Map(tracks));
+
+    Ok(MetaData::Map(album))
+}
+
 async fn run(config: &Config) -> anyhow::Result<()> {
     let mbid = "dlsh_eduZC8L7ghh6El2uFAkC88-";
     let releases = get_releases_by_discid(mbid).await?;
@@ -390,6 +449,8 @@ async fn run(config: &Config) -> anyhow::Result<()> {
 
     print_release_table(config, &releases).await?;
     print_tracks(&releases, mbid)?;
+
+    let meta = get_metadata(&releases.last().unwrap(), mbid).await?;
 
     Ok(())
 }
