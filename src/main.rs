@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use heck::ToTitleCase;
 use musicbrainz_rs::entity::artist_credit::ArtistCredit;
 use musicbrainz_rs::entity::discid::Discid;
@@ -11,6 +13,10 @@ use musicbrainz_rs::entity::release::Release;
 use musicbrainz_rs::entity::release_group::ReleaseGroup;
 use musicbrainz_rs::prelude::*;
 use serde::{Deserialize, Serialize};
+
+const RIPRIP_PATH: &'static str = "_riprip";
+
+const DEFAULT_OUTPUT: &'static str = "~/.blue-book";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AudioFormat {
@@ -155,7 +161,7 @@ async fn get_releases_by_discid(id: &str) -> anyhow::Result<Vec<Release>> {
     Ok(discid.releases.unwrap_or_default())
 }
 
-fn find_best_release(config: &Config, releases: Vec<Release>) -> Vec<Release> {
+fn find_best_release(releases: Vec<Release>, config: &Config) -> Vec<Release> {
     if releases.is_empty() {
         return Vec::new();
     }
@@ -243,7 +249,7 @@ async fn get_genre(release: &Release) -> anyhow::Result<Option<String>> {
     Ok(genre)
 }
 
-async fn print_release_table(config: &Config, releases: &[Release]) -> anyhow::Result<()> {
+async fn print_release_table(releases: &[Release], config: &Config) -> anyhow::Result<()> {
     let Some(release) = releases.last() else {
         return Ok(());
     };
@@ -407,6 +413,15 @@ impl MetaData {
         }
         self
     }
+
+    pub fn get_value(&self, key: &str) -> Option<&String> {
+        if let MetaData::Map(map) = self {
+            if let Some(MetaData::Value(value)) = map.get(key) {
+                return Some(value);
+            }
+        }
+        None
+    }
 }
 
 /// Extracts high-level metadata and a list of tracks for tagging.
@@ -455,16 +470,150 @@ async fn get_metadata(release: &Release, discid: &str) -> anyhow::Result<MetaDat
         .with_map("tracks", tracks))
 }
 
+/// Removes or replaces characters that are illegal in file systems.
+fn sanitize(text: &str) -> String {
+    let clean = text.replace(['\\', '/'], "-");
+
+    let mut result = clean;
+    result.retain(|c| !r#"<>:"|?*"#.contains(c));
+
+    result.trim().to_string()
+}
+
+/// Uses the album metadata to create the directory.
+fn get_album_path(root: &Path, meta: &MetaData, template: &str) -> PathBuf {
+    let mut template = template.to_string();
+
+    let replacements = [
+        ("{artist}", "artist"),
+        ("{album}", "album_title"),
+        ("{date}", "date"),
+    ];
+
+    for (placeholder, meta_key) in replacements {
+        // If the key is missing or isn't a Value, we default to an empty string.
+        let value = meta.get_value(meta_key).cloned().unwrap_or_default();
+        template = template.replace(placeholder, &sanitize(&value));
+    }
+
+    root.join(template)
+}
+
+/// Uses the track metadata to create the filename.
+fn get_track_path(
+    album_dir: &Path,
+    track_meta: &MetaData,
+    suffix: &str,
+    template: &str,
+) -> PathBuf {
+    let mut template = template.to_string();
+
+    let replacements = [
+        ("{discnumber}", "discnumber"),
+        ("{disctotal}", "disctotal"),
+        ("{tracknumber}", "tracknumber"),
+        ("{title}", "title"),
+        ("{artist}", "artist"),
+        ("{albumartist}", "albumartist"),
+        ("{suffix}", suffix),
+    ];
+
+    for (placeholder, meta_key) in replacements {
+        let val = track_meta
+            .get_value(meta_key)
+            .map(|s| s.as_str())
+            .unwrap_or_default();
+        template = template.replace(placeholder, &sanitize(val));
+    }
+
+    album_dir.join(template)
+}
+
+async fn rip_and_encode(
+    release: &Release,
+    cddb: &str,
+    discid: &str,
+    config: &Config,
+) -> anyhow::Result<()> {
+    let passes = config.rip.passes;
+    let device = &config.rip.device;
+    let template = &config.template;
+
+    if !config.rip.skip {
+        println!("Starting ripping process with {passes} passes...");
+
+        let mut cmd = Command::new("riprip");
+        cmd.arg("--passes").arg(passes.to_string());
+
+        if let Some(device) = device {
+            if device.exists() {
+                cmd.arg("--dev").arg(device);
+            }
+        }
+
+        // Set up pipes to send "y\n" to stdin
+        let mut child = cmd.stdin(Stdio::piped()).spawn()?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(b"y\n")?;
+        }
+
+        let status = child.wait()?;
+        if !status.success() {
+            eprintln!("Error ripping disc: process exited with {}", status);
+            return Ok(());
+        }
+    }
+
+    let meta = get_metadata(release, discid).await?;
+
+    let album_path = get_album_path(&PathBuf::from(DEFAULT_OUTPUT), &meta, &template.dir);
+    fs::create_dir_all(&album_path)?;
+
+    let cue_path = PathBuf::from(RIPRIP_PATH).join(format!("{cddb}.cue"));
+
+    if !cue_path.is_file() {
+        println!("No cue file found in _riprip.");
+        return Ok(());
+    }
+
+    // create_album(&cue_path, &meta, &album_path, config)?;
+
+    // if config.flac.cue_sheet {
+    //     if let Some(tracks) = meta.get("tracks") {
+    //         create_cue_sheet(&cue_path, &album_path, tracks, config)?;
+    //     }
+    // }
+
+    println!("\nSuccess! Files located in: {}", album_path.display());
+
+    Ok(())
+}
+
 async fn run(config: &Config) -> anyhow::Result<()> {
-    let mbid = "dlsh_eduZC8L7ghh6El2uFAkC88-";
-    let releases = get_releases_by_discid(mbid).await?;
+    let discid = "dlsh_eduZC8L7ghh6El2uFAkC88-";
+    let releases = get_releases_by_discid(discid).await?;
 
-    let releases = find_best_release(config, releases);
+    if !releases.is_empty() {
+        let releases = find_best_release(releases, config);
+        if releases.len() > 1 {
+            println!(
+                "Warning: Found {} matching releases, using the last one.\n",
+                releases.len()
+            )
+        }
+        if !releases.is_empty() {
+            print_release_table(&releases, config).await?;
+            print_tracks(&releases, discid)?;
+            println!("");
+        } else {
+            println!("No releases matched your specific filters.");
+        }
 
-    print_release_table(config, &releases).await?;
-    print_tracks(&releases, mbid)?;
-
-    let meta = get_metadata(&releases.last().unwrap(), mbid).await?;
+        rip_and_encode(releases.last().unwrap(), "cddb", discid, config).await?;
+    } else {
+        bail!("Error: No releases found for this TOC.")
+    }
 
     Ok(())
 }
