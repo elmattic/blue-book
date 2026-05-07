@@ -12,6 +12,7 @@ use musicbrainz_rs::entity::release::Media;
 use musicbrainz_rs::entity::release::Release;
 use musicbrainz_rs::entity::release_group::ReleaseGroup;
 use musicbrainz_rs::prelude::*;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 const RIPRIP_PATH: &'static str = "_riprip";
@@ -141,6 +142,58 @@ impl Config {
 
         Ok(config)
     }
+}
+
+#[derive(Debug)]
+pub struct DiscInfo {
+    pub cdtoc: String,
+    pub cddb: String,
+    pub discid: String,
+    pub track_lengths: Vec<u32>,
+}
+
+/// Runs riprip --no-rip and parses the CDTOC from the output.
+fn extract_cdtoc() -> anyhow::Result<DiscInfo> {
+    println!("Scanning disc for MusicBrainz...");
+
+    let output = Command::new("riprip").arg("--no-rip").output()?;
+
+    let stderr_text = String::from_utf8_lossy(&output.stderr);
+
+    if !output.status.success() {
+        bail!("{}", stderr_text);
+    }
+
+    let re_cdtoc = Regex::new(r"CDTOC:.*?([0-9A-F]+(?:\+[0-9A-F]+)+)")?;
+    let re_cddb = Regex::new(r"CDDB:.*?([0-9a-f]{8})")?;
+    let re_discid = Regex::new(r"MusicBrainz:.*?([a-zA-Z0-9._-]{27,28})")?;
+    let re_lengths = Regex::new(r"(?m)^\s*\d{2}\s+\d+\s+\d+\s+(\d+)")?;
+
+    let extract = |re: &Regex, label: &str| {
+        re.captures(&stderr_text)
+            .map(|c| c[1].to_string())
+            .with_context(|| format!("Could not find {label}"))
+    };
+
+    let cdtoc = extract(&re_cdtoc, "CDTOC")?;
+    let cddb = extract(&re_cddb, "CDDB")?;
+    let discid = extract(&re_discid, "MusicBrainz")?;
+
+    let track_lengths: Vec<u32> = re_lengths
+        .captures_iter(&stderr_text)
+        .filter_map(|cap| cap[1].parse().ok())
+        .collect();
+
+    if track_lengths.is_empty() {
+        bail!("No track lengths found in riprip output.");
+    }
+
+    Ok(DiscInfo {
+        cdtoc,
+        cddb,
+        discid,
+        track_lengths,
+    })
 }
 
 async fn get_releases_by_discid(id: &str) -> anyhow::Result<Vec<Release>> {
@@ -591,6 +644,8 @@ async fn rip_and_encode(
 }
 
 async fn run(config: &Config) -> anyhow::Result<()> {
+    let info = extract_cdtoc()?;
+
     let discid = "dlsh_eduZC8L7ghh6El2uFAkC88-";
     let releases = get_releases_by_discid(discid).await?;
 
@@ -610,7 +665,7 @@ async fn run(config: &Config) -> anyhow::Result<()> {
             println!("No releases matched your specific filters.");
         }
 
-        rip_and_encode(releases.last().unwrap(), "cddb", discid, config).await?;
+        rip_and_encode(releases.last().unwrap(), &info.cddb, &info.discid, config).await?;
     } else {
         bail!("Error: No releases found for this TOC.")
     }
@@ -634,5 +689,9 @@ fn main() -> anyhow::Result<()> {
     }
 
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async { run(&config).await })
+    if let Err(e) = rt.block_on(async { run(&config).await }) {
+        eprintln!("{:#}", e);
+        std::process::exit(1);
+    }
+    Ok(())
 }
