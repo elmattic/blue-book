@@ -646,8 +646,7 @@ async fn rip_and_encode(
 async fn run(config: &Config) -> anyhow::Result<()> {
     let info = extract_cdtoc()?;
 
-    let discid = "dlsh_eduZC8L7ghh6El2uFAkC88-";
-    let releases = get_releases_by_discid(discid).await?;
+    let releases = get_releases_by_discid(&info.discid).await?;
 
     if !releases.is_empty() {
         let releases = find_best_release(releases, config);
@@ -659,7 +658,7 @@ async fn run(config: &Config) -> anyhow::Result<()> {
         }
         if !releases.is_empty() {
             print_release_table(&releases, config).await?;
-            print_tracks(&releases, discid)?;
+            print_tracks(&releases, &info.discid)?;
             println!("");
         } else {
             println!("No releases matched your specific filters.");
@@ -674,10 +673,7 @@ async fn run(config: &Config) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    println!("Hello, world!");
     let config = Config::load_from_file(PathBuf::from("config.toml"))?;
-
-    dbg!(&config);
 
     unsafe {
         // SAFETY: called at program startup before initializing the Tokio runtime,
