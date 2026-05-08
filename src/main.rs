@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, bail};
+use clap::{Parser, ValueEnum};
 use heck::ToTitleCase;
 use musicbrainz_rs::entity::artist_credit::ArtistCredit;
 use musicbrainz_rs::entity::discid::Discid;
@@ -19,7 +20,7 @@ const RIPRIP_PATH: &'static str = "_riprip";
 
 const DEFAULT_OUTPUT: &'static str = "~/.blue-book";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 pub enum AudioFormat {
     Flac,
     Alac,
@@ -122,7 +123,7 @@ impl Default for TemplateConfig {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Config {
+struct Config {
     #[serde(default)]
     pub filter: FilterConfig,
     #[serde(default)]
@@ -136,11 +137,32 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+    fn load_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let content = fs::read_to_string(path)?;
         let config: Config = toml::from_str(&content)?;
 
         Ok(config)
+    }
+
+    /// Merges CLI arguments into the existing configuration.
+    fn merge_cli(&mut self, cli: Cli) {
+        if let Some(barcode) = cli.barcode {
+            self.filter.barcode = Some(barcode);
+        }
+        if let Some(country) = cli.country {
+            self.filter.country = Some(country);
+        }
+        if let Some(date) = cli.date {
+            self.filter.date = Some(date);
+        }
+
+        if cli.skip {
+            self.rip.skip = true;
+        }
+
+        if let Some(format) = cli.format {
+            self.encode.format = format; 
+        }
     }
 }
 
@@ -672,8 +694,68 @@ async fn run(config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn normalize_barcode(value: &str) -> Result<String, String> {
+    let normalized: String = value.chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect();
+    Ok(normalized)
+}
+
+fn to_uppercase(value: &str) -> Result<String, String> {
+    Ok(value.to_uppercase())
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "blue-book",
+    version,
+    about = "Bit-perfect audio extraction and archival for CDs.",
+    // Ensures that the help message is clean and modern
+    disable_help_subcommand = true, 
+    infer_long_args = false
+)]
+struct Cli {
+    /// Show raw data for debugging
+    #[arg(short, long)]
+    pub verbose: bool,
+
+    /// Filter release by barcode (e.g., 689230001720, 0-77774-62072-7)
+    #[arg(short, long, value_parser = normalize_barcode)]
+    pub barcode: Option<String>,
+
+    /// Filter release by country code (e.g., US, GB)
+    #[arg(short, long, value_parser = to_uppercase)]
+    pub country: Option<String>,
+
+    /// Filter release by date (YYYY-MM-DD)
+    #[arg(short, long)]
+    pub date: Option<String>,
+
+    /// Skip the ripping process
+    #[arg(short, long)]
+    pub skip: bool,
+
+    /// Output audio format
+    #[arg(short, long, value_enum)]
+    pub format: Option<AudioFormat>,
+
+    /// Manually provide a TOC string; if empty, the CDTOC is extracted via riprip
+    #[arg(
+        long, 
+        num_args = 0..=1, 
+        default_missing_value = "EXTRACT"
+    )]
+    pub toc: Option<String>,
+}
+
 fn main() -> anyhow::Result<()> {
-    let config = Config::load_from_file(PathBuf::from("config.toml"))?;
+    let mut config = Config::load_from_file(PathBuf::from("config.toml"))?;
+    let cli = Cli::parse();
+    let verbose = cli.verbose;
+    let toc = cli.toc.clone();
+    config.merge_cli(cli);
+
+    dbg!(&config);
 
     unsafe {
         // SAFETY: called at program startup before initializing the Tokio runtime,
