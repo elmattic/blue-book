@@ -832,7 +832,7 @@ fn create_album(
                 verbose,
             )?;
         } else {
-            let track_meta = tracks_map.get_map(&trk).unwrap();
+            let track_meta = tracks_map.get_map(&trk.trim_start_matches('0')).unwrap();
             let file_out = get_track_path(album_path, track_meta, &encode.format, &template.file);
 
             create_track(&wav_paths, &file_out, track_meta, config, verbose)?;
