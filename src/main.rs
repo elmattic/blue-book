@@ -1,6 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
+use std::fs::File;
 use std::io::Write;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -15,6 +17,7 @@ use musicbrainz_rs::entity::release_group::ReleaseGroup;
 use musicbrainz_rs::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use tempfile::NamedTempFile;
 
 const RIPRIP_PATH: &'static str = "_riprip";
 
@@ -161,7 +164,7 @@ impl Config {
         }
 
         if let Some(format) = cli.format {
-            self.encode.format = format; 
+            self.encode.format = format;
         }
     }
 }
@@ -497,6 +500,43 @@ impl MetaData {
         }
         None
     }
+
+    pub fn get_map(&self, key: &str) -> Option<&MetaData> {
+        if let MetaData::Map(map) = self {
+            let entry = map.get(key);
+            // Ensure the entry we found is actually a Map variant
+            if let Some(MetaData::Map(_)) = entry {
+                return entry;
+            }
+        }
+        None
+    }
+
+    pub fn hidden_track(track: &MetaData) -> Option<Self> {
+        let MetaData::Map(map) = track else {
+            return None;
+        };
+
+        let mut map_copy = map.clone();
+
+        map_copy.insert("title".to_string(), MetaData::Value("[hidden]".to_string()));
+
+        let new_num_str = map_copy
+            .get("tracknumber")
+            .and_then(|meta| {
+                if let MetaData::Value(s) = meta {
+                    Some(s)
+                } else {
+                    None
+                }
+            })
+            .and_then(|s| s.parse::<i32>().ok())
+            .map(|num| (num - 1).to_string())?;
+
+        map_copy.insert("tracknumber".to_string(), MetaData::Value(new_num_str));
+
+        Some(MetaData::Map(map_copy))
+    }
 }
 
 /// Extracts high-level metadata and a list of tracks for tagging.
@@ -578,7 +618,7 @@ fn get_album_path(root: &Path, meta: &MetaData, template: &str) -> PathBuf {
 fn get_track_path(
     album_dir: &Path,
     track_meta: &MetaData,
-    suffix: &str,
+    format: &AudioFormat,
     template: &str,
 ) -> PathBuf {
     let mut template = template.to_string();
@@ -590,7 +630,7 @@ fn get_track_path(
         ("{title}", "title"),
         ("{artist}", "artist"),
         ("{albumartist}", "albumartist"),
-        ("{suffix}", suffix),
+        ("{suffix}", format.suffix()),
     ];
 
     for (placeholder, meta_key) in replacements {
@@ -604,11 +644,210 @@ fn get_track_path(
     album_dir.join(template)
 }
 
+#[derive(Debug)]
+struct CueIndex {
+    pub index: String,
+    pub file: String,
+}
+
+fn parse_riprip_cue(cue_path: &Path) -> anyhow::Result<HashMap<String, Vec<CueIndex>>> {
+    let mut tracks: HashMap<String, Vec<CueIndex>> = HashMap::new();
+    let mut current_file: Option<String> = None;
+    let mut current_track: Option<String> = None;
+
+    let file_re = Regex::new(r#""([^"]+)""#)?;
+
+    let file = File::open(cue_path)?;
+    let reader = BufReader::new(file);
+
+    for line in reader.lines() {
+        let line = line?.trim().to_string();
+
+        if line.starts_with("FILE") {
+            if let Some(caps) = file_re.captures(&line) {
+                current_file = Some(caps[1].to_string());
+            }
+        } else if line.starts_with("TRACK") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let track_num = parts[1].to_string();
+                current_track = Some(track_num.clone());
+                tracks.insert(track_num, Vec::new());
+            }
+        } else if line.starts_with("INDEX") {
+            if let (Some(track), Some(file_name)) = (&current_track, &current_file) {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Some(indices) = tracks.get_mut(track) {
+                        indices.push(CueIndex {
+                            index: parts[1].to_string(),
+                            file: file_name.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(tracks)
+}
+
+/// Merges one or more WAVs into a single file and applies tags.
+fn create_track(
+    wav_files: &[PathBuf],
+    file_out: &Path,
+    track_info: &MetaData,
+    config: &Config,
+    verbose: bool,
+) -> anyhow::Result<()> {
+    let encode = &config.encode;
+
+    let (_temp_path, ffmpeg_input) = if wav_files.len() > 1 {
+        // Create a temporary file for the concat instructions
+        let mut tmp =
+            NamedTempFile::with_suffix(".txt").context("Failed to create temporary file")?;
+
+        for wav in wav_files {
+            // Use absolute paths and escape single quotes for safety
+            writeln!(tmp, "file '{}'", wav.canonicalize().unwrap().display())?;
+        }
+
+        // Use the 'concat' demuxer instead of the 'concat' protocol
+        let ffmpeg_input = vec![
+            "-f".into(),
+            "concat".into(),
+            "-safe".into(),
+            "0".into(),
+            "-i".into(),
+            tmp.path().to_string_lossy().to_string(),
+        ];
+
+        (Some(tmp.into_temp_path()), ffmpeg_input)
+    } else if let Some(first) = wav_files.first() {
+        let ffmpeg_input = vec!["-i".into(), first.to_string_lossy().to_string()];
+
+        (None, ffmpeg_input)
+    } else {
+        bail!("No input files provided");
+    };
+
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-hide_banner");
+    if verbose {
+        cmd.args(["-loglevel", "info"]);
+    } else {
+        cmd.args(["-loglevel", "error", "-stats"]);
+    }
+    cmd.args(&ffmpeg_input);
+
+    // Codec-specific flags
+    if let AudioFormat::Flac = encode.format {
+        cmd.args([
+            "-compression_level",
+            &config.flac.compression_level.to_string(),
+        ]);
+    }
+
+    let mapping = [
+        ("album", "album"),
+        ("artist", "artist"),
+        ("date", "date"),
+        ("genre", "genre"),
+        ("title", "title"),
+        ("track", "tracknumber"),
+        ("totaltracks", "tracktotal"),
+        ("disc", "discnumber"),
+        ("disctotal", "disctotal"),
+    ];
+    for (key, meta_key) in mapping {
+        if let Some(value) = track_info.get_value(meta_key) {
+            cmd.args(["-metadata", &format!("{}={}", key, value)]);
+        }
+    }
+
+    cmd.arg(file_out).arg("-y");
+
+    let status = cmd
+        .status()
+        .context("Error: 'ffmpeg' utility not found. Please install it.")?;
+
+    if !status.success() {
+        bail!("FFmpeg failed with exit code: {}", status);
+    }
+
+    Ok(())
+}
+
+fn create_album(
+    cue_path: &Path,
+    meta: &MetaData,
+    album_path: &Path,
+    config: &Config,
+    verbose: bool,
+) -> anyhow::Result<()> {
+    let encode = &config.encode;
+    let template = &config.template;
+
+    let data = parse_riprip_cue(cue_path)?;
+
+    println!(
+        "Creating {} tracks using {}...",
+        data.len(),
+        encode.format.codec()
+    );
+    for (trk, info) in data {
+        // Extract files and sort them by index (00, then 01)
+        // This ensures the Pre-gap is prepended to the Audio
+        let mut sorted_segments = info;
+        sorted_segments.sort_by_key(|item| item.index.clone());
+
+        let wav_paths: Vec<PathBuf> = sorted_segments
+            .iter()
+            .map(|item| PathBuf::from(RIPRIP_PATH).join(&item.file))
+            .collect();
+
+        let tracks_map = meta.get_map("tracks").unwrap();
+
+        if wav_paths.len() == 2 {
+            let track_meta = tracks_map.get_map("1").unwrap();
+
+            let file_out = get_track_path(album_path, track_meta, &encode.format, &template.file);
+            create_track(
+                &[wav_paths[1].clone()],
+                &file_out,
+                track_meta,
+                config,
+                verbose,
+            )?;
+
+            let track_meta_copy = &MetaData::hidden_track(track_meta).unwrap();
+
+            let file_out =
+                get_track_path(album_path, track_meta_copy, &encode.format, &template.file);
+            create_track(
+                &[wav_paths[0].clone()],
+                &file_out,
+                track_meta_copy,
+                config,
+                verbose,
+            )?;
+        } else {
+            let track_meta = tracks_map.get_map(&trk).unwrap();
+            let file_out = get_track_path(album_path, track_meta, &encode.format, &template.file);
+
+            create_track(&wav_paths, &file_out, track_meta, config, verbose)?;
+        }
+    }
+
+    Ok(())
+}
+
 async fn rip_and_encode(
     release: &Release,
     cddb: &str,
     discid: &str,
     config: &Config,
+    verbose: bool,
 ) -> anyhow::Result<()> {
     let passes = config.rip.passes;
     let device = &config.rip.device;
@@ -652,7 +891,7 @@ async fn rip_and_encode(
         return Ok(());
     }
 
-    // create_album(&cue_path, &meta, &album_path, config)?;
+    create_album(&cue_path, &meta, &album_path, config, verbose)?;
 
     // if config.flac.cue_sheet {
     //     if let Some(tracks) = meta.get("tracks") {
@@ -665,7 +904,7 @@ async fn rip_and_encode(
     Ok(())
 }
 
-async fn run(config: &Config) -> anyhow::Result<()> {
+async fn run(config: &Config, verbose: bool) -> anyhow::Result<()> {
     let info = extract_cdtoc()?;
 
     let releases = get_releases_by_discid(&info.discid).await?;
@@ -684,9 +923,17 @@ async fn run(config: &Config) -> anyhow::Result<()> {
             println!("");
         } else {
             println!("No releases matched your specific filters.");
+            return Ok(());
         }
 
-        rip_and_encode(releases.last().unwrap(), &info.cddb, &info.discid, config).await?;
+        rip_and_encode(
+            releases.last().unwrap(),
+            &info.cddb,
+            &info.discid,
+            config,
+            verbose,
+        )
+        .await?;
     } else {
         bail!("Error: No releases found for this TOC.")
     }
@@ -695,7 +942,8 @@ async fn run(config: &Config) -> anyhow::Result<()> {
 }
 
 fn normalize_barcode(value: &str) -> Result<String, String> {
-    let normalized: String = value.chars()
+    let normalized: String = value
+        .chars()
         .filter(|c| !c.is_whitespace() && *c != '-')
         .collect();
     Ok(normalized)
@@ -711,7 +959,7 @@ fn to_uppercase(value: &str) -> Result<String, String> {
     version,
     about = "Bit-perfect audio extraction and archival for CDs.",
     // Ensures that the help message is clean and modern
-    disable_help_subcommand = true, 
+    disable_help_subcommand = true,
     infer_long_args = false
 )]
 struct Cli {
@@ -741,8 +989,8 @@ struct Cli {
 
     /// Manually provide a TOC string; if empty, the CDTOC is extracted via riprip
     #[arg(
-        long, 
-        num_args = 0..=1, 
+        long,
+        num_args = 0..=1,
         default_missing_value = "EXTRACT"
     )]
     pub toc: Option<String>,
@@ -767,7 +1015,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let rt = tokio::runtime::Runtime::new()?;
-    if let Err(e) = rt.block_on(async { run(&config).await }) {
+    if let Err(e) = rt.block_on(async { run(&config, verbose).await }) {
         eprintln!("{:#}", e);
         std::process::exit(1);
     }
