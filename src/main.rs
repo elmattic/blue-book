@@ -21,7 +21,7 @@ use tempfile::NamedTempFile;
 
 const RIPRIP_PATH: &'static str = "_riprip";
 
-const DEFAULT_OUTPUT: &'static str = "~/.blue-book";
+const DEFAULT_FOLDER: &'static str = ".blue-book";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 pub enum AudioFormat {
@@ -881,7 +881,11 @@ async fn rip_and_encode(
 
     let meta = get_metadata(release, discid).await?;
 
-    let album_path = get_album_path(&PathBuf::from(DEFAULT_OUTPUT), &meta, &template.dir);
+    let default_output = home::home_dir()
+        .map(|p| p.join(DEFAULT_FOLDER))
+        .context("failed to get home dir")?;
+
+    let album_path = get_album_path(&default_output, &meta, &template.dir);
     fs::create_dir_all(&album_path)?;
 
     let cue_path = PathBuf::from(RIPRIP_PATH).join(format!("{cddb}.cue"));
