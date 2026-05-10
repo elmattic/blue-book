@@ -1,3 +1,5 @@
+mod format;
+
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::fs::File;
@@ -18,6 +20,8 @@ use musicbrainz_rs::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
+
+use format::{Variant, parse};
 
 const RIPRIP_PATH: &'static str = "_riprip";
 
@@ -120,7 +124,7 @@ impl Default for TemplateConfig {
     fn default() -> Self {
         Self {
             dir: "{artist}/{album}".into(),
-            file: "{tracknumber:02d} - {title}.{suffix}".into(),
+            file: "{tracknumber:02} - {title}.{suffix}".into(),
         }
     }
 }
@@ -597,21 +601,19 @@ fn sanitize(text: &str) -> String {
 
 /// Uses the album metadata to create the directory.
 fn get_album_path(root: &Path, meta: &MetaData, template: &str) -> PathBuf {
-    let mut template = template.to_string();
-
-    let replacements = [
-        ("{artist}", "artist"),
-        ("{album}", "album_title"),
-        ("{date}", "date"),
+    let mapping = [
+        ("artist", "artist"),
+        ("album", "album_title"),
+        ("date", "date"),
     ];
 
-    for (placeholder, meta_key) in replacements {
-        // If the key is missing or isn't a Value, we default to an empty string.
-        let value = meta.get_value(meta_key).cloned().unwrap_or_default();
-        template = template.replace(placeholder, &sanitize(&value));
+    let mut args = HashMap::new();
+    for (key, meta_key) in mapping {
+        let value = meta.get_value(meta_key).cloned().unwrap();
+        args.insert(key, Variant::Str(value));
     }
 
-    root.join(template)
+    root.join(parse(&template, &args).unwrap().to_string())
 }
 
 /// Uses the track metadata to create the filename.
@@ -621,27 +623,28 @@ fn get_track_path(
     format: &AudioFormat,
     template: &str,
 ) -> PathBuf {
-    let mut template = template.to_string();
-
-    let replacements = [
-        ("{discnumber}", "discnumber"),
-        ("{disctotal}", "disctotal"),
-        ("{tracknumber}", "tracknumber"),
-        ("{title}", "title"),
-        ("{artist}", "artist"),
-        ("{albumartist}", "albumartist"),
-        ("{suffix}", format.suffix()),
+    let mapping = [
+        ("discnumber", "discnumber", false),
+        ("disctotal", "disctotal", false),
+        ("tracknumber", "tracknumber", false),
+        ("title", "title", true),
+        ("artist", "artist", true),
+        ("albumartist", "albumartist", true),
+        ("suffix", format.suffix(), true),
     ];
 
-    for (placeholder, meta_key) in replacements {
-        let val = track_meta
-            .get_value(meta_key)
-            .map(|s| s.as_str())
-            .unwrap_or_default();
-        template = template.replace(placeholder, &sanitize(val));
+    let mut args = HashMap::new();
+    for (key, meta_key, is_str) in mapping {
+        let value = track_meta.get_value(meta_key).cloned().unwrap();
+        let var = if is_str {
+            Variant::Str(value)
+        } else {
+            Variant::Int(value.parse::<i32>().unwrap())
+        };
+        args.insert(key, var);
     }
 
-    album_dir.join(template)
+    album_dir.join(parse(&template, &args).unwrap().to_string())
 }
 
 #[derive(Debug)]

@@ -13,4 +13,4 @@ cue_sheet = true
 
 [template]
 # dir = "{artist}/{album}"
-# file = "{tracknum:02d} - {title}.{suffix}"
+# file = "{tracknumber:02} - {title}.{suffix}"
