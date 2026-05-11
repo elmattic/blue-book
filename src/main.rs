@@ -603,13 +603,13 @@ fn sanitize(text: &str) -> String {
 fn get_album_path(root: &Path, meta: &MetaData, template: &str) -> PathBuf {
     let mapping = [
         ("artist", "artist"),
-        ("album", "album_title"),
+        ("album", "albumtitle"),
         ("date", "date"),
     ];
 
     let mut args = HashMap::new();
     for (key, meta_key) in mapping {
-        let value = meta.get_value(meta_key).cloned().unwrap();
+        let value = meta.get_value(meta_key).cloned().unwrap_or_default();
         args.insert(key, Variant::Str(value));
     }
 
@@ -630,12 +630,11 @@ fn get_track_path(
         ("title", "title", true),
         ("artist", "artist", true),
         ("albumartist", "albumartist", true),
-        ("suffix", format.suffix(), true),
     ];
 
     let mut args = HashMap::new();
     for (key, meta_key, is_str) in mapping {
-        let value = track_meta.get_value(meta_key).cloned().unwrap();
+        let value = track_meta.get_value(meta_key).cloned().unwrap_or_default();
         let var = if is_str {
             Variant::Str(value)
         } else {
@@ -643,6 +642,7 @@ fn get_track_path(
         };
         args.insert(key, var);
     }
+    args.insert("suffix", Variant::Str(format.suffix().into()));
 
     album_dir.join(parse(&template, &args).unwrap().to_string())
 }
