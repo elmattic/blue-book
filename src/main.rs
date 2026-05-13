@@ -600,7 +600,7 @@ fn sanitize(text: &str) -> String {
 }
 
 /// Uses the album metadata to create the directory.
-fn get_album_path(root: &Path, meta: &MetaData, template: &str) -> PathBuf {
+fn album_path(root: &Path, meta: &MetaData, config: &Config) -> anyhow::Result<PathBuf> {
     let mapping = [
         ("artist", "artist"),
         ("album", "albumtitle"),
@@ -613,16 +613,12 @@ fn get_album_path(root: &Path, meta: &MetaData, template: &str) -> PathBuf {
         args.insert(key, Variant::Str(value));
     }
 
-    root.join(parse(&template, &args).unwrap().to_string())
+    let parsed = parse(&config.template.dir, &args).map_err(|e| anyhow::anyhow!(e))?;
+    Ok(root.join(parsed.to_string()))
 }
 
 /// Uses the track metadata to create the filename.
-fn get_track_path(
-    album_dir: &Path,
-    track_meta: &MetaData,
-    format: &AudioFormat,
-    template: &str,
-) -> PathBuf {
+fn track_path(album_dir: &Path, track_meta: &MetaData, config: &Config) -> anyhow::Result<PathBuf> {
     let mapping = [
         ("discnumber", "discnumber", false),
         ("disctotal", "disctotal", false),
@@ -638,13 +634,14 @@ fn get_track_path(
         let var = if is_str {
             Variant::Str(value)
         } else {
-            Variant::Int(value.parse::<i32>().unwrap())
+            Variant::Int(value.parse::<i32>()?)
         };
         args.insert(key, var);
     }
-    args.insert("suffix", Variant::Str(format.suffix().into()));
+    args.insert("suffix", Variant::Str(config.encode.format.suffix().into()));
 
-    album_dir.join(parse(&template, &args).unwrap().to_string())
+    let parsed = parse(&config.template.file, &args).map_err(|e| anyhow::anyhow!(e))?;
+    Ok(album_dir.join(parsed.to_string()))
 }
 
 #[derive(Debug)]
@@ -814,7 +811,7 @@ fn create_album(
         if wav_paths.len() == 2 {
             let track_meta = tracks_map.get_map("1").unwrap();
 
-            let file_out = get_track_path(album_path, track_meta, &encode.format, &template.file);
+            let file_out = track_path(album_path, track_meta, config)?;
             create_track(
                 &[wav_paths[1].clone()],
                 &file_out,
@@ -825,8 +822,7 @@ fn create_album(
 
             let track_meta_copy = &MetaData::hidden_track(track_meta).unwrap();
 
-            let file_out =
-                get_track_path(album_path, track_meta_copy, &encode.format, &template.file);
+            let file_out = track_path(album_path, track_meta_copy, config)?;
             create_track(
                 &[wav_paths[0].clone()],
                 &file_out,
@@ -836,7 +832,7 @@ fn create_album(
             )?;
         } else {
             let track_meta = tracks_map.get_map(&trk.trim_start_matches('0')).unwrap();
-            let file_out = get_track_path(album_path, track_meta, &encode.format, &template.file);
+            let file_out = track_path(album_path, track_meta, config)?;
 
             create_track(&wav_paths, &file_out, track_meta, config, verbose)?;
         }
@@ -888,7 +884,7 @@ async fn rip_and_encode(
         .map(|p| p.join(DEFAULT_FOLDER))
         .context("failed to get home dir")?;
 
-    let album_path = get_album_path(&default_output, &meta, &template.dir);
+    let album_path = album_path(&default_output, &meta, config)?;
     fs::create_dir_all(&album_path)?;
 
     let cue_path = PathBuf::from(RIPRIP_PATH).join(format!("{cddb}.cue"));
@@ -1010,7 +1006,9 @@ fn main() -> anyhow::Result<()> {
     let toc = cli.toc.clone();
     config.merge_cli(cli);
 
-    dbg!(&config);
+    if verbose {
+        println!("{:#?}", &config);
+    }
 
     unsafe {
         // SAFETY: called at program startup before initializing the Tokio runtime,
