@@ -4,8 +4,8 @@ mod format;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::fs::File;
-use std::io::Write;
 use std::io::{BufRead, BufReader};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -691,6 +691,53 @@ fn create_album(
     Ok(())
 }
 
+fn create_cue_sheet(
+    cue_path: &Path,
+    album_path: &Path,
+    tracks: &MetaData,
+    config: &Config,
+) -> anyhow::Result<()> {
+    let mut content = String::new();
+    File::open(cue_path)?.read_to_string(&mut content)?;
+
+    let mut patched_lines = Vec::new();
+
+    // Regex to capture the riprip filename pattern: "prefix__XX.wav"
+    // match.group(1) is the prefix, group(2) is the index/track number
+    let file_pattern = Regex::new(r#"FILE "(.*?)__(\d+)\.wav" WAVE"#)?;
+
+    for line in content.lines() {
+        if let Some(captures) = file_pattern.captures(line) {
+            // riprip logic: __00 is Track 1 Index 0, __01 is Track 1 Index 1
+            // __02 is Track 2, etc.
+            let original_num_str = captures.get(2).map_or("", |m| m.as_str());
+            let original_num: i32 = original_num_str.parse()?;
+
+            let new_line = match tracks.get_map(&original_num.to_string()) {
+                Some(track) => {
+                    let file_out = track_path(Path::new(""), track, config)?;
+                    format!(r#"FILE "{}" WAVE"#, file_out.to_string_lossy())
+                }
+                None => {
+                    // Some hidden track?
+                    format!(r#"FILE "{:02} - [hidden].flac" WAVE"#, original_num)
+                }
+            };
+            patched_lines.push(new_line);
+        } else {
+            patched_lines.push(line.to_string());
+        }
+    }
+
+    // Save the new album cue sheet
+    let output_path = album_path.join("album.cue");
+    let mut file = File::create(output_path)?;
+
+    file.write_all(patched_lines.join("\n").as_bytes())?;
+
+    Ok(())
+}
+
 async fn rip_and_encode(
     release: &Release,
     cddb: &str,
@@ -745,11 +792,11 @@ async fn rip_and_encode(
 
     create_album(&cue_path, &meta, &album_path, config, verbose)?;
 
-    // if config.flac.cue_sheet {
-    //     if let Some(tracks) = meta.get("tracks") {
-    //         create_cue_sheet(&cue_path, &album_path, tracks, config)?;
-    //     }
-    // }
+    if config.flac.cue_sheet {
+        if let Some(tracks) = meta.get_map("tracks") {
+            create_cue_sheet(&cue_path, &album_path, tracks, config)?;
+        }
+    }
 
     println!("\nSuccess! Files located in: {}", album_path.display());
 
