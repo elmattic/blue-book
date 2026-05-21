@@ -46,6 +46,10 @@ pub struct Cli {
     #[arg(short, long)]
     pub date: Option<String>,
 
+    /// Filter release by id
+    #[arg(long)]
+    pub id: Option<String>,
+
     /// Skip the ripping process
     #[arg(short, long)]
     pub skip: bool,
@@ -99,6 +103,7 @@ pub struct FilterConfig {
     pub barcode: Option<String>,
     pub country: Option<String>,
     pub date: Option<String>,
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -197,6 +202,9 @@ impl Config {
         }
         if let Some(date) = cli.date {
             self.filter.date = Some(date);
+        }
+        if let Some(id) = cli.id {
+            self.filter.id = Some(id);
         }
 
         if cli.skip {

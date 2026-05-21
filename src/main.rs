@@ -14,8 +14,7 @@ use clap::Parser;
 use heck::ToTitleCase;
 use musicbrainz_rs::entity::artist_credit::ArtistCredit;
 use musicbrainz_rs::entity::discid::Discid;
-use musicbrainz_rs::entity::release::Media;
-use musicbrainz_rs::entity::release::Release;
+use musicbrainz_rs::entity::release::{Media, Release};
 use musicbrainz_rs::entity::release_group::ReleaseGroup;
 use musicbrainz_rs::prelude::*;
 use regex::Regex;
@@ -133,7 +132,13 @@ fn find_best_release(releases: Vec<Release>, config: &Config) -> Vec<Release> {
                 }
             };
 
-            barcode_ok && country_ok && date_ok
+            // id filter
+            let id_ok = match &args.id {
+                None => true,
+                Some(id) => &r.id == id,
+            };
+
+            barcode_ok && country_ok && date_ok && id_ok
         })
         .collect()
 }
@@ -817,6 +822,20 @@ async fn run(config: &Config, verbose: bool) -> anyhow::Result<()> {
             )
         }
         if !releases.is_empty() {
+            if verbose {
+                for release in releases.iter() {
+                    println!(
+                        "{}: {}",
+                        release.id,
+                        if let Some(x) = release.disambiguation.as_ref() {
+                            x
+                        } else {
+                            ""
+                        }
+                    );
+                }
+                println!("");
+            }
             print_release_table(&releases, config).await?;
             print_tracks(&releases, &info.discid)?;
             println!("");
