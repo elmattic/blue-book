@@ -32,10 +32,17 @@ pub struct DiscInfo {
 }
 
 /// Runs riprip --no-rip and parses the CDTOC from the output.
-fn extract_cdtoc() -> anyhow::Result<DiscInfo> {
+fn extract_cdtoc(config: &Config) -> anyhow::Result<DiscInfo> {
     println!("Scanning disc for MusicBrainz...");
 
-    let output = Command::new("riprip").arg("--no-rip").output()?;
+    let mut cmd = Command::new("riprip");
+    cmd.arg("--no-rip");
+    if let Some(device) = &config.rip.device {
+        if device.exists() {
+            cmd.arg("--dev").arg(device);
+        }
+    }
+    let output = cmd.output()?;
 
     let stderr_text = String::from_utf8_lossy(&output.stderr);
 
@@ -809,7 +816,7 @@ async fn rip_and_encode(
 }
 
 async fn run(config: &Config, verbose: bool) -> anyhow::Result<()> {
-    let info = extract_cdtoc()?;
+    let info = extract_cdtoc(config)?;
 
     let releases = get_releases_by_discid(&info.discid).await?;
 
