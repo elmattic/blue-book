@@ -186,10 +186,14 @@ pub struct Config {
 
 impl Config {
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
-        let content = fs::read_to_string(path)?;
-        let config: Config = toml::from_str(&content)?;
+        if path.as_ref().exists() {
+            let content = fs::read_to_string(path)?;
+            let config: Config = toml::from_str(&content)?;
 
-        Ok(config)
+            Ok(config)
+        } else {
+            Ok(Config::default())
+        }
     }
 
     /// Merges CLI arguments into the existing configuration.
