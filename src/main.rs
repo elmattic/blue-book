@@ -24,7 +24,7 @@ use config::{AudioFormat, Cli, Config, DEFAULT_FOLDER, RIPRIP_PATH};
 use format::{Variant, parse};
 
 #[derive(Debug)]
-pub struct DiscInfo {
+struct DiscInfo {
     pub cdtoc: String,
     pub cddb: String,
     pub discid: String,
@@ -44,10 +44,10 @@ fn extract_cdtoc(config: &Config) -> anyhow::Result<DiscInfo> {
     }
     let output = cmd.output()?;
 
-    let stderr_text = String::from_utf8_lossy(&output.stderr);
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
     if !output.status.success() {
-        bail!("{}", stderr_text);
+        bail!("{}", stderr);
     }
 
     let re_cdtoc = Regex::new(r"CDTOC:.*?([0-9A-F]+(?:\+[0-9A-F]+)+)")?;
@@ -55,10 +55,10 @@ fn extract_cdtoc(config: &Config) -> anyhow::Result<DiscInfo> {
     let re_discid = Regex::new(r"MusicBrainz:.*?([a-zA-Z0-9._-]{27,28})")?;
     let re_lengths = Regex::new(r"(?m)^\s*\d{2}\s+\d+\s+\d+\s+(\d+)")?;
 
-    let extract = |re: &Regex, label: &str| {
-        re.captures(&stderr_text)
+    let extract = |re: &Regex, s: &str| {
+        re.captures(&stderr)
             .map(|c| c[1].to_string())
-            .with_context(|| format!("Could not find {label}"))
+            .with_context(|| format!("could not find {s} in riprip output."))
     };
 
     let cdtoc = extract(&re_cdtoc, "CDTOC")?;
@@ -66,12 +66,12 @@ fn extract_cdtoc(config: &Config) -> anyhow::Result<DiscInfo> {
     let discid = extract(&re_discid, "MusicBrainz")?;
 
     let track_lengths: Vec<u32> = re_lengths
-        .captures_iter(&stderr_text)
+        .captures_iter(&stderr)
         .filter_map(|cap| cap[1].parse().ok())
         .collect();
 
     if track_lengths.is_empty() {
-        bail!("No track lengths found in riprip output.");
+        bail!("no track lengths found in riprip output.");
     }
 
     Ok(DiscInfo {
@@ -83,8 +83,7 @@ fn extract_cdtoc(config: &Config) -> anyhow::Result<DiscInfo> {
 }
 
 async fn get_releases_by_discid(id: &str) -> anyhow::Result<Vec<Release>> {
-    println!("{}", id);
-    println!();
+    println!("{id}\n");
 
     let discid = Discid::fetch()
         .id(id)
@@ -95,22 +94,17 @@ async fn get_releases_by_discid(id: &str) -> anyhow::Result<Vec<Release>> {
         .with_release_groups()
         .execute_async()
         .await
-        .with_context(|| format!("failed to fetch releases for discid {id}"))?;
+        .with_context(|| format!("failed to fetch releases for discid {}.", id))?;
 
     Ok(discid.releases.unwrap_or_default())
 }
 
-fn find_best_release(releases: Vec<Release>, config: &Config) -> Vec<Release> {
-    if releases.is_empty() {
-        return Vec::new();
-    }
-
+fn find_best_releases(releases: Vec<Release>, config: &Config) -> Vec<Release> {
     let args = &config.filter;
 
     releases
         .into_iter()
         .filter(|r| {
-            // barcode filter
             let barcode_ok = match &args.barcode {
                 None => true,
                 Some(search) => {
@@ -124,13 +118,11 @@ fn find_best_release(releases: Vec<Release>, config: &Config) -> Vec<Release> {
                 }
             };
 
-            // country filter
             let country_ok = match &args.country {
                 None => true,
                 Some(c) => r.country.as_deref() == Some(c.as_str()),
             };
 
-            // date filter
             let date_ok = match &args.date {
                 None => true,
                 Some(d) => {
@@ -139,7 +131,6 @@ fn find_best_release(releases: Vec<Release>, config: &Config) -> Vec<Release> {
                 }
             };
 
-            // id filter
             let id_ok = match &args.id {
                 None => true,
                 Some(id) => &r.id == id,
@@ -177,14 +168,13 @@ async fn get_genre(release: &Release) -> anyhow::Result<Option<String>> {
     let Some(rg_ref) = &release.release_group else {
         return Ok(None);
     };
-    let rg_id = &rg_ref.id;
 
     let rg_data = ReleaseGroup::fetch()
-        .id(rg_id)
+        .id(&rg_ref.id)
         .with_tags()
         .execute_async()
         .await
-        .with_context(|| format!("failed to fetch release group {rg_id}"))?;
+        .with_context(|| format!("failed to fetch release group {}.", rg_ref.id))?;
 
     let genre = rg_data.tags.and_then(|mut tags| {
         tags.sort_by(|a, b| b.count.cmp(&a.count));
@@ -591,7 +581,7 @@ fn create_track(
 
         (None, ffmpeg_input)
     } else {
-        bail!("No input files provided");
+        bail!("no input files provided.");
     };
 
     let mut cmd = Command::new("ffmpeg");
@@ -821,7 +811,7 @@ async fn run(config: &Config, verbose: bool) -> anyhow::Result<()> {
     let releases = get_releases_by_discid(&info.discid).await?;
 
     if !releases.is_empty() {
-        let releases = find_best_release(releases, config);
+        let releases = find_best_releases(releases, config);
         if releases.len() > 1 {
             println!(
                 "Warning: Found {} matching releases, using the last one.\n",
@@ -860,7 +850,7 @@ async fn run(config: &Config, verbose: bool) -> anyhow::Result<()> {
         )
         .await?;
     } else {
-        bail!("Error: No releases found for this TOC.")
+        bail!("no releases found for this TOC.")
     }
 
     Ok(())
